@@ -2,9 +2,9 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
+// 以 JDK 17 toolchain 編譯（Java 與 Kotlin 同步 17），不受執行 Gradle 的 JDK 版本影響
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {

@@ -8,3 +8,5 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+# 本機備份壓縮檔（例如 AutoSeer源碼快照.7z，138MB，超過 GitHub 單檔上限）
+*.7z
