@@ -36,6 +36,15 @@ object SeerTemplates {
     const val FACTOR_GRID = "factor/grid_marker"     // 在因子卡選擇格（辨識：右上搜尋框）
     const val FACTOR_DETAIL = "factor/detail_marker" // 在因子詳情頁（辨識：左側「總能力值」字樣）
 
+    /**
+     * 關卡詳情卡頂端「關卡 N」的數字樣板（index 0..4 = 關卡1..5）。用來讀「當前是第幾關」的
+     * 地面真相，校正關卡相位——遊戲會把上次中斷的因子續戰停在半途（例如關4），純靠勝場計數會
+     * 整輪錯位、把換寵腳本套到不該換寵的關而卡死（實機影片27）。樣板自 1280×720 幀裁出。
+     */
+    val STAGE_NUM = listOf(
+        "stage/num_1", "stage/num_2", "stage/num_3", "stage/num_4", "stage/num_5",
+    )
+
     /** All template ids the automation looks for (used by the detection probe). */
     val ALL = listOf(
         BATTLE_ACTION, RESULT_WIN, RESULT_LOSE, TAP_CONTINUE, ENTER_BATTLE, WAIT_CHALLENGE,
@@ -44,7 +53,7 @@ object SeerTemplates {
         RETREAT_TIP, RETREAT_SUCCESS, CONTINUE_CHALLENGE,
         DAILY_LIMIT, QUICK_MENU, HOME_BTN, NAV_GUIDE,
         FACTOR_GRID, FACTOR_DETAIL,
-    )
+    ) + STAGE_NUM
 }
 
 /**
@@ -113,6 +122,25 @@ object SeerLayout {
      */
     val FIELD_HEAD = Region(12, 12, 104, 96)
 
+    /**
+     * 左上「你方當前精靈」血條的**最左段**（正規化 1280x720）。以平均灰階亮度判讀精靈死活。
+     * 已用 6 張實機對戰截圖（1589~1603×~897）校準此區域與門檻：
+     *   有活精靈(橘)：灰階 127~131；陣亡(0 血空條)：55；結束畫面：28。
+     * 取最左段是因為血量由右往左耗，最左段只要精靈未死就仍是橘色，可乾淨區分活/死。
+     * 門檻見 [HP_BAR_ALIVE_MIN]（90，兩側各留 ~35 餘裕）。
+     */
+    val PLAYER_HP_BAR = Region(156, 30, 80, 14)
+
+    /** [PLAYER_HP_BAR] 灰階 ≥ 此值＝場上有活精靈(橘)，< 此值＝陣亡/空條(暗)。校準自 6 張實機截圖。 */
+    const val HP_BAR_ALIVE_MIN = 90.0
+
+    /**
+     * 關卡詳情卡頂端「關卡 N」數字的搜尋區（正規化 1280×720；只在詳情卡展開時畫面上才有）。
+     * 對 [SeerTemplates.STAGE_NUM] 五個數字樣板在此區取最高分＝當前真實關卡數。裁自實機幀
+     * （數字位於 x≈928–968, y≈100–144），此區留了餘裕供比對定位。
+     */
+    val STAGE_NUM_ROI = Region(916, 96, 64, 54)
+
     /** 換精靈子畫面第 [n] 張卡(1..6)的頭像區＝ [PET_REGIONS]（已是頭像區），供與 [FIELD_HEAD] 比對。 */
     fun petCardHead(n: Int): Region? = PET_REGIONS.getOrNull(n - 1)
 
@@ -156,6 +184,12 @@ object SeerLayout {
 
     /** 左上「返回」箭頭：三個因子畫面（選擇格/詳情頁/節點頁）共用，實測中心≈(84,22)。 */
     val FACTOR_EXIT = Location(84, 22)
+
+    /** 因子選擇格右上「輸入精靈名或ID」搜尋框（正規化 1280x720，量自 1600x900×0.8）。 */
+    val FACTOR_SEARCH_BOX = Location(1048, 88)
+
+    /** 搜尋到單一因子後，唯一結果卡固定在左上格的中心（供搜尋導航點選進關）。 */
+    val FACTOR_SEARCH_RESULT = Location(312, 276)
 
     /** 選擇格「上排」5 張因子卡的立繪中心 x（欄距≈212）。 */
     private val FACTOR_CARD_XS = listOf(312, 524, 736, 948, 1160)

@@ -32,6 +32,28 @@ class SweepProgressTest {
     }
 
     @Test
+    fun syncStageIndexAlignsToReadStageThenAdvancesAndWraps() {
+        // 影片27 情境：遊戲把因子續戰停在關4(index 3)，AutoSeer 讀畫面校正相位。
+        val p = SweepProgress(plan(stages = 5))
+        p.syncStageIndex(3)
+        assertEquals(3, p.currentStageIndex())        // 關4（非勝場推算的關1）
+        p.onWin(); assertEquals(4, p.currentStageIndex())  // 關5
+        p.onWin(); assertEquals(0, p.currentStageIndex())  // 新輪關1（wrap）
+        p.onWin(); assertEquals(1, p.currentStageIndex())  // 關2
+        p.syncStageIndex(1); assertEquals(1, p.currentStageIndex())  // 再讀對齊＝no-op
+        assertEquals(3, p.battlesDone)                // 勝場總數照計不受影響
+    }
+
+    @Test
+    fun syncStageIndexHonorsStartStageAndWraps() {
+        val p = SweepProgress(plan(stages = 5, startStage = 3))
+        p.syncStageIndex(2); assertEquals(2, p.currentStageIndex())  // 讀到關3
+        p.onWin(); assertEquals(3, p.currentStageIndex())            // 關4
+        p.onWin(); assertEquals(4, p.currentStageIndex())            // 關5
+        p.onWin(); assertEquals(0, p.currentStageIndex())            // wrap → 關1
+    }
+
+    @Test
     fun loseKeepsSameStageAndCountsRetry() {
         val p = SweepProgress(plan(maxRetries = 5))
         assertEquals(0, p.currentStageIndex())

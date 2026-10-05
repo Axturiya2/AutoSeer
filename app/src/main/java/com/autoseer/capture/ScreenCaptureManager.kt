@@ -13,6 +13,7 @@ import android.util.Log
 import com.autoseer.core.OpenCvPattern
 import com.autoseer.libautomata.IPattern
 import com.autoseer.libautomata.IScreenshotProvider
+import com.autoseer.libautomata.ScreenshotTimeoutException
 import com.autoseer.libautomata.Size
 import org.opencv.android.Utils
 import org.opencv.core.Mat
@@ -41,11 +42,20 @@ class ScreenCaptureManager(
     private val normalizedWidth =
         (deviceWidth.toDouble() * normalizedHeight / deviceHeight).toInt()
 
+    // Capture at the normalized size (~1280x720) instead of full device resolution:
+    // the MediaProjection VirtualDisplay then mirrors and reads back a ~64%-smaller
+    // surface, cutting the per-frame compositor + GPU-readback load that (together
+    // with the game's 換精靈 animation spike) can stall the emulator's display on
+    // lower-throughput GPUs. Gestures still use the real device size (deviceSize()),
+    // so tap coordinates are unaffected; the captured frame is already normalized.
+    private val captureWidth = normalizedWidth
+    private val captureHeight = normalizedHeight
+
     private val handlerThread = HandlerThread("AutoSeerCapture").apply { start() }
     private val handler = Handler(handlerThread.looper)
 
     private val imageReader: ImageReader =
-        ImageReader.newInstance(deviceWidth, deviceHeight, PixelFormat.RGBA_8888, MAX_IMAGES)
+        ImageReader.newInstance(captureWidth, captureHeight, PixelFormat.RGBA_8888, MAX_IMAGES)
 
     private var virtualDisplay: VirtualDisplay? = null
 
@@ -55,8 +65,8 @@ class ScreenCaptureManager(
         }, handler)
         virtualDisplay = projection.createVirtualDisplay(
             "AutoSeerCapture",
-            deviceWidth,
-            deviceHeight,
+            captureWidth,
+            captureHeight,
             densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader.surface,
@@ -86,7 +96,11 @@ class ScreenCaptureManager(
                     image.close()
                 }
             }
-            if (++attempts > MAX_WAIT_TICKS) error("擷取螢幕逾時：沒有可用的畫面影格")
+            if (++attempts > MAX_WAIT_TICKS) {
+                // Recoverable: AutomataApi.refreshScreen reuses the last frame for a
+                // bounded run of these so a transient display stall doesn't kill the run.
+                throw ScreenshotTimeoutException("擷取螢幕逾時：沒有可用的畫面影格")
+            }
         }
     }
 
@@ -95,12 +109,12 @@ class ScreenCaptureManager(
         val plane = image.planes[0]
         val pixelStride = plane.pixelStride
         val rowStride = plane.rowStride
-        val rowPadding = rowStride - pixelStride * deviceWidth
-        val bufferedWidth = deviceWidth + rowPadding / pixelStride
-        val buf = Bitmap.createBitmap(bufferedWidth, deviceHeight, Bitmap.Config.ARGB_8888)
+        val rowPadding = rowStride - pixelStride * captureWidth
+        val bufferedWidth = captureWidth + rowPadding / pixelStride
+        val buf = Bitmap.createBitmap(bufferedWidth, captureHeight, Bitmap.Config.ARGB_8888)
         buf.copyPixelsFromBuffer(plane.buffer)
-        return if (bufferedWidth != deviceWidth) {
-            val cropped = Bitmap.createBitmap(buf, 0, 0, deviceWidth, deviceHeight)
+        return if (bufferedWidth != captureWidth) {
+            val cropped = Bitmap.createBitmap(buf, 0, 0, captureWidth, captureHeight)
             buf.recycle()
             cropped
         } else {

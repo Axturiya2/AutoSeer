@@ -3,6 +3,7 @@ package com.autoseer.core
 import com.autoseer.libautomata.IPattern
 import com.autoseer.libautomata.Region
 import com.autoseer.libautomata.Size
+import org.opencv.core.Core
 import org.opencv.core.Mat
 import org.opencv.core.Rect
 import org.opencv.imgcodecs.Imgcodecs
@@ -36,6 +37,9 @@ class OpenCvPattern(val mat: Mat) : IPattern {
         Imgproc.resize(mat, dst, org.opencv.core.Size(size.width.toDouble(), size.height.toDouble()))
         return OpenCvPattern(dst)
     }
+
+    /** Mean intensity (0..255) of the (single-channel grayscale) mat. */
+    override fun meanGray(): Double = Core.mean(mat).`val`[0]
 
     override fun save(path: String) {
         Imgcodecs.imwrite(path, mat)

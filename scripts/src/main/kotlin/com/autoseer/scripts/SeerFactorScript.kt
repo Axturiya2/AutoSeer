@@ -55,13 +55,15 @@ class SeerFactorScript(
     val battlesDone: Int get() = progress.battlesDone
 
     private var stop = false
+    private var stageConfirmed = false
 
     override fun run() {
         api.logger.i("精靈因子掃蕩開始：每輪關數=${activePlan.stagesPerLoop}, 起始關=${activePlan.startStage}")
         emitProgress()
         // 多因子銜接：先由選擇格導航進第一個指定因子的詳情頁（單因子模式跳過）。
         if (sweep != null && !sweep.enterFirst()) {
-            api.logger.w("銜接：無法進入第一個指定因子，結束。")
+            // 不再蓋一句外層訊息——讓 FactorSearchSweep 的具體失敗原因(SET_TEXT失敗/未進詳情)
+            // 成為氣泡上最後一行，方便直接看出是哪一步。
             return
         }
         var unknown = 0
@@ -73,8 +75,17 @@ class SeerFactorScript(
             // 次數用盡：整個掃蕩結束 → 回大廳
             if (m.exists(SeerTemplates.DAILY_LIMIT)) { if (onDailyLimit()) continue else break }
 
-            // 已在戰鬥中（你的回合）？直接打這一關。
-            if (m.exists(SeerTemplates.BATTLE_ACTION)) { fightThisStage(); unknown = 0; continue }
+            // 已在戰鬥中（你的回合）？只有已確認關卡數才允許開打；
+            // 未確認（冷啟動/轉場異常）→ 先撤退回詳情卡，下一輪再讀關卡數重新進入。
+            if (m.exists(SeerTemplates.BATTLE_ACTION)) {
+                if (stageConfirmed) {
+                    fightThisStage(); stageConfirmed = false; unknown = 0; continue
+                }
+                api.logger.w("已在戰鬥中但未確認關卡數，先撤退再重新辨識")
+                m.retreat(delays)
+                if (++unknown >= STUCK_LIMIT) { api.logger.w("連續撤退重試仍無法確認關卡，停止。"); break }
+                continue
+            }
 
             // 結算殘留（點擊繼續字樣仍在）→ 點空白略過，避免卡住。
             if (m.exists(SeerTemplates.TAP_CONTINUE) ||
@@ -99,8 +110,8 @@ class SeerFactorScript(
                 api.logger.i("關卡資訊卡已展開（偵測到精靈恢復）")
             }
 
-            // 精靈恢復模塊（純視覺閘）：邊點「精靈恢復」邊快輪詢字樣——字樣是真正的閘，
-            // 在它出現前多點幾次精靈恢復無害，故用「點到任一字樣出現」取代「點一次枯等逾時」。
+            // 精靈恢復模塊（純視覺閘）：先恢復血量，再辨識關卡。
+            // 恢復前詳情卡可能顯示舊關卡數；恢復後遊戲才更新，此時再讀才準。
             val first = m.tapUntilAppearsAny(
                 listOf(
                     SeerTemplates.FIRST_RECOVER_TIP,
@@ -108,10 +119,11 @@ class SeerFactorScript(
                     SeerTemplates.RECOVER_CANNOT,
                 ),
                 RECOVER_TRIES, RECOVER_POLL_MS,
-            ) { m.tapIfPresent(SeerTemplates.PET_RECOVER) }
+            ) { api.click(SeerLayout.HEAL) }   // 固定座標點「精靈恢復」；
+            //   資訊卡是固定版面，HEAL=(945,560)→實機(1181,700) 正落在精靈恢復中心；偵測仍
+            //   用寬字樣樣板（RECOVER_FULL/CANNOT）當閘，只把「點擊」改回固定座標。
             when (first) {
                 SeerTemplates.FIRST_RECOVER_TIP -> {
-                    // 每日首次恢復提示 → 確認 → 再快輪詢恢復完成字樣
                     api.click(FIRST_TIP_CONFIRM)
                     if (m.waitAppearAny(
                             listOf(SeerTemplates.RECOVER_FULL, SeerTemplates.RECOVER_CANNOT),
@@ -120,7 +132,32 @@ class SeerFactorScript(
                     ) { api.logger.w("首次提示確認後未見恢復完成字樣，重試恢復"); continue }
                 }
                 null -> { api.logger.w("未偵測到恢復完成字樣，重試恢復"); continue }
-                else -> { /* 已見全部恢復 / 已滿字樣，續走進入戰鬥 */ }
+                else -> { /* 已見全部恢復 / 已滿字樣，續走辨識關卡 */ }
+            }
+
+            // 動態辨識關卡數（強制閘）：恢復完成後讀詳情卡頂端「關卡 N」，確認第幾關才放行
+            // 進入戰鬥。必須在精靈恢復之後——恢復前卡面可能顯示舊關卡數，會把錯誤的相位
+            // 「確認」進 progress，導致下一關套用錯誤腳本（A 關打 B 腳本）。
+            var readIdx: Int? = null
+            for (attempt in 1..STAGE_READ_RETRIES) {
+                api.refreshScreen()
+                readIdx = readStageNumber()
+                if (readIdx != null) break
+                if (attempt < STAGE_READ_RETRIES) {
+                    api.logger.w("關卡數辨識失敗（第 $attempt/$STAGE_READ_RETRIES 次），重新截圖重試…")
+                    api.sleep(STAGE_READ_POLL_MS)
+                }
+            }
+            if (readIdx != null) {
+                if (readIdx != progress.currentStageIndex())
+                    api.logger.i("讀到關卡 ${readIdx + 1}（校正相位；原勝場推算為第 ${progress.currentStageIndex() + 1} 關）")
+                progress.syncStageIndex(readIdx)
+                emitProgress()
+                stageConfirmed = true
+            } else {
+                api.logger.w("重試 $STAGE_READ_RETRIES 次仍無法辨識關卡數，跳過本輪（不以勝場推算替代）")
+                if (++unknown >= STUCK_LIMIT) { api.logger.w("連續無法辨識關卡數，停止。"); break }
+                continue
             }
 
             // 進入戰鬥
@@ -141,7 +178,7 @@ class SeerFactorScript(
                 if (++unknown >= STUCK_LIMIT) { api.logger.w("等不到你的回合，停止。"); break }
                 continue
             }
-            fightThisStage(); unknown = 0
+            fightThisStage(); stageConfirmed = false; unknown = 0
         }
         api.logger.i("精靈因子掃蕩結束，共清 $battlesDone 關。")
     }
@@ -174,6 +211,28 @@ class SeerFactorScript(
 
     /** 回報目前進度給懸浮視窗（stageNo 從 1 起）。 */
     private fun emitProgress() = onProgress(progress.currentStageIndex() + 1, progress.battlesDone)
+
+    /**
+     * 從詳情卡頂端「關卡 N」讀當前真實關卡數 → 0-based index（0..4），讀不到回 null（呼叫端退回
+     * 勝場推算）。對五個數字樣板在固定 ROI 各取最高分，取最高者；需最高分達標且明顯高於次高
+     * （避免相近字形誤判，例如 3/5），否則視為讀不到。只在詳情卡展開時呼叫。
+     */
+    private fun readStageNumber(): Int? {
+        var bestIdx = -1
+        var best = 0.0
+        var second = 0.0
+        for (i in SeerTemplates.STAGE_NUM.indices) {
+            val id = SeerTemplates.STAGE_NUM[i]
+            if (!templates.has(id)) continue
+            val score = api.find(templates.get(id), SeerLayout.STAGE_NUM_ROI, STAGE_NUM_FIND_MIN)?.score ?: 0.0
+            when {
+                score > best -> { second = best; best = score; bestIdx = i }
+                score > second -> second = score
+            }
+        }
+        if (bestIdx < 0 || best < STAGE_NUM_ACCEPT || best - second < STAGE_NUM_MARGIN) return null
+        return bestIdx
+    }
 
     /** 失敗/撤退：點繼續 → 依 [SweepProgress] 決定重打同關或停止（原地/回大廳）。 */
     private fun onLose(reason: String) {
@@ -257,5 +316,14 @@ class SeerFactorScript(
         private const val ENTRY_POLL_MS = 180L    // 展開資訊卡：點擊後快速輪詢「精靈恢復」的間隔
         private const val RECOVER_TRIES = 5       // 精靈恢復：點到恢復字樣出現的重試次數
         private const val RECOVER_POLL_MS = 180L  // 精靈恢復：快輪詢恢復完成字樣的間隔
+        private const val STAGE_READ_RETRIES = 5  // 關卡數辨識重試次數（每次重新截圖）
+        private const val STAGE_READ_POLL_MS = 300L // 關卡數辨識重試間隔
+
+        // 讀「關卡 N」數字：對五個樣板取分。FIND_MIN=收集候選的下限；ACCEPT=最高分需達標；
+        // MARGIN=最高分需高於次高的差距（避免 3/5 等相近字形誤判）。跨影格實測正確項≈1.0、
+        // 次高≤0.84，故門檻寬鬆亦安全；讀不到就退回勝場推算，不會弄壞相位。
+        private const val STAGE_NUM_FIND_MIN = 0.45
+        private const val STAGE_NUM_ACCEPT = 0.70
+        private const val STAGE_NUM_MARGIN = 0.06
     }
 }

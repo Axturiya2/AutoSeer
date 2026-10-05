@@ -16,6 +16,13 @@ interface IPattern : AutoCloseable {
     /** Return a new pattern resized to [size]. */
     fun resize(size: Size): IPattern
 
+    /**
+     * Mean pixel intensity (0..255) over the whole pattern, on the grayscale image.
+     * Cheap brightness read for colour-coded UI: e.g. the 血條 reads bright when a
+     * pet is alive (橘) and dark when it is 陣亡 (深褐)。
+     */
+    fun meanGray(): Double
+
     /** Persist to [path] as PNG (debugging / capturing template assets). */
     fun save(path: String)
 

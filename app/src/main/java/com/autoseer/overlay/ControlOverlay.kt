@@ -132,7 +132,12 @@ class ControlOverlay(
             text = "待命"
             setTextColor(cInk)
             textSize = 11f
-            maxWidth = dp(210)
+            // 固定寬度＋單行：狀態文字每次變動都不改變收合視窗的尺寸，避免視窗 resize →
+            // Surface 重建 → 撞上 MuMu 虛擬GPU 的 eglCreateWindowSurface/rcCreateColorBuffer
+            // 卡死（整個 app 凍結的根因）。完整狀態仍可在展開面板/Logcat 看。
+            width = dp(210)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             background = rounded(Color.parseColor("#EA1F2226"), 8, cLine)
             setPadding(dp(9), dp(4), dp(9), dp(4))
         }
@@ -223,7 +228,8 @@ class ControlOverlay(
         p.addView(header, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT))
         add(statusText); add(progressText)
         add(scriptButton)
-        add(stageRow)
+        // 起始關卡 stepper 已休眠（v9+：改以動態辨識「關卡 N」為準，不再由使用者預設）。
+        // stageRow 及 bumpStage() 程式碼保留但不加進面板。
         add(delayBtn)
         add(runButton); add(tools); add(navTestBtn, dp(6))
         return p
@@ -278,7 +284,7 @@ class ControlOverlay(
         if (root == null) return
         if (expanded) {
             refreshScriptButton()
-            stageValue.text = RunPrefs.startStage(context).toString()
+            // 起始關卡 stepper 已休眠，不再刷新 stageValue。
         }
         scriptPopup.visibility = View.GONE
         delayPopup.visibility = View.GONE
@@ -404,7 +410,8 @@ class ControlOverlay(
             runButton.background = rounded(if (isRunning) cStop else cGood, 9)
             dotView.text = if (isRunning) "⏸" else "AS"
             (dotView.background as? GradientDrawable)?.setColor(if (isRunning) cGood else cAccent)
-            if (!isRunning) { capText.text = "待命"; statusText.text = "狀態：待命" }
+            // 停止時「不」強制刷成待命——保留最後一行狀態(常是結束/失敗原因)，方便直接在氣泡上看，
+            // 不必再開 adb logcat。真正閒置的初始文字仍是「待命」。
         }
     }
 
@@ -413,9 +420,16 @@ class ControlOverlay(
         statusText.post { statusText.text = text }
     }
 
-    /** Hide/show the whole overlay so it doesn't appear in a screen capture. */
+    /**
+     * Hide/show the whole overlay so it doesn't appear in a screen capture. Uses
+     * alpha (fully transparent) rather than View.GONE: GONE relayouts the window to
+     * 0 size and releases its Surface, so restoring it recreates the Surface — and
+     * that eglCreateWindowSurface → rcCreateColorBuffer path is exactly where MuMu's
+     * virtual GPU hangs (the whole-app freeze). alpha=0 keeps the same Surface, is
+     * still absent from the captured frame, and never triggers a recreate.
+     */
     fun setChromeVisible(visible: Boolean) {
-        root?.post { root?.visibility = if (visible) View.VISIBLE else View.GONE }
+        root?.post { root?.alpha = if (visible) 1f else 0f }
     }
 
     fun setProgress(stageNo: Int, cleared: Int) {

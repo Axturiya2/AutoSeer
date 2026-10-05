@@ -30,14 +30,15 @@ import com.autoseer.core.SeerScript
 import com.autoseer.runner.ScriptRunner
 import com.autoseer.core.FactorLibrary
 import com.autoseer.core.FactorPlan
+import com.autoseer.core.FactorPlanEntry
+import com.autoseer.core.FactorPlanPrefs
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlan
 import com.autoseer.scripts.BattlePlanParser
 import com.autoseer.scripts.FactorTarget
-import com.autoseer.scripts.FactorNavTestScript
-import com.autoseer.scripts.FactorNavigator
+import com.autoseer.scripts.FactorSearchNavTestScript
+import com.autoseer.scripts.FactorSearchSweep
 import com.autoseer.scripts.FactorSweepProgress
-import com.autoseer.scripts.FactorSweepRunner
 import com.autoseer.scripts.ProbeScript
 import com.autoseer.scripts.SeerFactorScript
 import com.autoseer.ui.CardCaptureActivity
@@ -67,6 +68,10 @@ class AutoSeerService : Service() {
         override fun dragSteady(from: Location, to: Location, durationMs: Long, holdMs: Long) {
             GestureAccessibilityService.instance?.dragSteady(from, to, durationMs, holdMs)
         }
+        override fun setText(text: String): Boolean =
+            GestureAccessibilityService.instance?.setText(text) ?: false
+        override fun focusedText(): String? =
+            GestureAccessibilityService.instance?.focusedText()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -157,25 +162,27 @@ class AutoSeerService : Service() {
         // 多因子銜接＋每因子腳本：依「因子關卡排序」取得(因子, 指派腳本)清單，對齊解出各自作戰計畫；
         // 未指派＝跟隨主畫面所選腳本。此只驅動「選擇/進入」導航與挑哪個計畫，戰鬥回合引擎不受影響。
         val entries = FactorPlan.resolvedEntries(this)
-        val imgByName = FactorLibrary.list(this).associateBy { it.displayName }
         val factorTargets = ArrayList<FactorTarget>()
         val factorPlans = ArrayList<BattlePlan>()
         for (e in entries) {
-            val img = imgByName[e.name] ?: continue
-            val target = FactorLibrary.loadTargets(this, listOf(img)).firstOrNull() ?: continue
             val scr = e.scriptId?.let { ScriptStore.get(this, it) } ?: script
-            factorTargets += target
+            // 直接從檔名尾端解析 精靈ID：先去副檔名(e.name 形如 NN_名稱_ID.png)，再取最後一段數字。
+            val base = e.name.substringBeforeLast('.')
+            val id = base.substringAfterLast('_').takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
+            factorTargets += FactorTarget(e.name, id = id)
             factorPlans += parseFactorPlan(scr)
         }
         runner.start { api ->
             if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
+                // 銜接＝「搜尋 ID 直達」（FactorSearchSweep）；捲動比對導航已移除。
                 val sweep = if (factorTargets.isNotEmpty()) {
-                    api.logger.i("銜接模式：圖庫指定 ${factorTargets.size} 個因子（${factorTargets.joinToString("、") { it.name }}）")
-                    overlay?.setStatus("銜接模式：${factorTargets.size} 個指定因子")
-                    FactorSweepRunner(
-                        nav = FactorNavigator(api, templates, delays) { v -> overlay?.setChromeVisible(v) },
-                        progress = FactorSweepProgress(factorTargets),
-                        logger = api.logger,
+                    api.logger.i("搜尋銜接：${factorTargets.size} 個因子（用ID搜尋直達）")
+                    overlay?.setStatus("搜尋銜接：${factorTargets.size} 個因子")
+                    FactorSearchSweep(
+                        api, templates, FactorSweepProgress(factorTargets), delays, api.logger,
+                        // 每打完一個因子（達每日上限）就把它從選關計畫移除＝取消勾選，方便事後排查
+                        // 打到哪、中途停也留進度。只寫存檔，不動本次執行中的 factorTargets（隔離不破）。
+                        onFactorDone = { done -> deselectCompletedFactor(factorTargets, done) },
                     )
                 } else null
                 SeerFactorScript(
@@ -191,6 +198,26 @@ class AutoSeerService : Service() {
         }
     }
 
+    /**
+     * 某因子達每日上限（今日打完）→ 從「因子關卡排序」計畫把它移除＝取消勾選。
+     *
+     * 目的：使用者事後（或中途停掉時）一眼看出打到哪——還亮著的第一個就是沒打完/卡住的那個，
+     * 不必每次從頭檢視。純寫存檔（SharedPreferences，執行緒安全），**不動**本次執行中已建好的
+     * in-memory [factorTargets]，故不干擾正在跑的掃蕩——維持「選關 / 戰鬥」兩模組的隔離。
+     *
+     * 無存檔計畫（open-box 全打）時，先用本次完整清單具現化再移除；跑到全空時，下次開 UI 因
+     * 「無有效計畫」會自動回到預設全選（見 FactorPlan.resolvedEntries）。
+     */
+    private fun deselectCompletedFactor(allTargets: List<FactorTarget>, done: FactorTarget) {
+        val base = FactorPlanPrefs.getEntries(this)
+            ?: allTargets.map { FactorPlanEntry(it.name, null) }
+        val remaining = base.filterNot { it.name == done.name }
+        if (remaining.size != base.size) {
+            FactorPlanPrefs.setEntries(this, remaining)
+            Log.i(TAG, "因子已完成，取消勾選「${done.name}」，剩 ${remaining.size} 個")
+        }
+    }
+
     /** Parse one saved script into a [BattlePlan] (script fields + global run options). */
     private fun parseFactorPlan(script: SeerScript): BattlePlan {
         val parsed = BattlePlanParser.parse(
@@ -199,7 +226,7 @@ class AutoSeerService : Service() {
             healBeforeBattle = RunPrefs.healBeforeBattle(this),
             advanceMap = script.advanceMap,
             defaultSlot = RunPrefs.defaultSlot(this),
-            startStage = RunPrefs.startStage(this),
+            startStage = 1,  // 起始關卡改為固定 1（動態辨識「關卡 N」校正相位，不再讀 RunPrefs）
             maxRetriesPerStage = script.maxRetries,
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
@@ -265,17 +292,16 @@ class AutoSeerService : Service() {
             overlay?.setStatus("⚠ 無障礙服務未連線，無法點擊。請先到設定開啟")
             return
         }
-        val targets = FactorPlan.forSweep(this)
-        if (targets.isEmpty()) {
-            overlay?.setStatus("⚠ 圖庫沒有因子卡，請先用『擷取卡』存幾張再測")
+        // 因子「搜尋導航」測試：讀圖庫中 NN_名稱_ID 檔名的 ID，逐一「搜尋→點結果→進詳情→退出」。
+        // 先在因子選擇格畫面按此鈕。結果見狀態列/Logcat（tag AutoSeer）。
+        val idTargets = FactorLibrary.listWithIds(this)
+        if (idTargets.isEmpty()) {
+            overlay?.setStatus("⚠ 圖庫沒有帶ID的因子卡（檔名需 NN_名稱_ID）")
             return
         }
+        overlay?.setStatus("因子搜尋導航測試：${idTargets.size} 個帶ID因子（見 Logcat）")
         val templates = DeviceTemplates(this)
-        val delays = DelayPrefs.toBattleDelays(this)
-        overlay?.setStatus("因子導航測試：${targets.size} 個因子（不打戰鬥，按停止結束）")
-        runner.start { api ->
-            FactorNavTestScript(api, templates, delays, targets) { v -> overlay?.setChromeVisible(v) }
-        }
+        runner.start { api -> FactorSearchNavTestScript(api, templates, idTargets) }
     }
 
     /** Run the detection probe: report each template's match score without tapping anything. */

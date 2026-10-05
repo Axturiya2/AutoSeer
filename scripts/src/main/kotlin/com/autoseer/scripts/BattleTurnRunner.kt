@@ -1,7 +1,6 @@
 package com.autoseer.scripts
 
 import com.autoseer.libautomata.AutomataApi
-import com.autoseer.libautomata.IPattern
 import com.autoseer.libautomata.Location
 import com.autoseer.libautomata.Templates
 
@@ -57,18 +56,26 @@ class BattleTurnRunner(
 
     /**
      * The result screen is up (「點擊任意位置繼續」 seen) but the win/lose diamond
-     * hasn't matched yet — give the animation a moment and read it. Defaults to
-     * WIN only if 失敗 is never seen, and logs when it had to guess.
+     * hasn't matched on this frame — the screen is STATIC (it never dismisses until
+     * we tap 繼續), so an unread diamond just means "poll longer", never "guess".
+     *
+     * If after a generous read it is *still* unreadable (only really happens during an
+     * emulator stall), default to **LOSE**, not WIN. Rationale (實機27 相位漂移):
+     * the per-stage plan is chosen purely by the win-count, so a phantom WIN pushes the
+     * stage cursor one ahead → a no-switch stage runs the next stage's 換精靈 steps →
+     * it keeps trying to switch where it can't and hangs. A false LOSE only re-fights the
+     * SAME stage (a wasted retry at worst) and keeps the stage cursor in phase — the safe
+     * direction. So on genuine ambiguity we never advance the counter.
      */
     private fun resolveOutcome(): Result {
         repeat(OUTCOME_POLLS) {
             if (exists(SeerTemplates.RESULT_LOSE)) return Result.LOSE
             if (exists(SeerTemplates.RESULT_WIN)) return Result.WIN
-            api.sleep(300)
+            api.sleep(OUTCOME_POLL_MS)
             api.refreshScreen()
         }
-        api.logger.w("戰鬥結束但未讀到勝利/失敗字樣，暫以勝利處理")
-        return Result.WIN
+        api.logger.w("戰鬥結束但讀不到勝利/失敗字樣（可能卡頓）→ 保守當『失敗』重打本關，避免關卡相位超前而誤換寵")
+        return Result.LOSE
     }
 
     /** Returns false when the plan is exhausted before 勝利 (failure). */
@@ -149,15 +156,11 @@ class BattleTurnRunner(
                     api.click(SeerLayout.PET.center); api.sleep(delays.afterSwitch); api.refreshScreen()
                 }
                 api.logger.i("換精靈 ${slotIndex + 1}${if (target == null) "（補位）" else ""}")
-                val cardHead = SeerLayout.petCardHead(slotIndex + 1)
-                    ?.let { runCatching { api.cropScreen(it) }.getOrNull() }
                 val slot = SeerLayout.PET_SLOTS[slotIndex]
                 api.click(slot); api.sleep(300)
                 api.swipe(slot, Location(slot.x, slot.y - SeerLayout.PET_DEPLOY_UP_PX), 450)
                 api.sleep(delays.afterSwitch); api.refreshScreen()
-                val ok = verifyDeployed(cardHead, activeSwitch = !alreadyOpen)
-                cardHead?.close()
-                if (ok) return true
+                if (verifyDeployed(activeSwitch = !alreadyOpen)) return true
                 api.logger.w("換精靈未通過驗證")
             }
         }
@@ -175,26 +178,31 @@ class BattleTurnRunner(
      *    "no PET_DEFEATED → always success" made a missed 主動切換 look successful, so
      *    the original pet stayed in and the sequence drifted — the 30–40% flakiness.)
      *  - 陣亡補位 (else): success = leaving the 換精靈 介面 (PET_DEFEATED gone).
-     * Head-similarity is logged for diagnosis only (uncalibrated coords → a low score
-     * means "coords unset", not "switch failed"; it must not drive pass/fail).
+     * The poll is slowed (fewer screenshots while the 換精靈 animation is on screen)
+     * to cut this window's capture load — one of the two spikes that can stall the
+     * emulator display; the state signal itself (a template appearing/disappearing)
+     * is unaffected by the idle-sprite twitch.
      */
-    private fun verifyDeployed(cardHead: IPattern?, activeSwitch: Boolean): Boolean {
-        logHeadSimilarity(cardHead)
+    private fun verifyDeployed(activeSwitch: Boolean): Boolean {
+        logHpBar()
         return if (activeSwitch) {
-            api.waitUntil(SWITCH_VERIFY_MS, pollMs = 300) { !exists(SeerTemplates.BATTLE_ACTION) }
+            api.waitUntil(SWITCH_VERIFY_MS, pollMs = SWITCH_POLL_MS) { !exists(SeerTemplates.BATTLE_ACTION) }
         } else {
-            api.waitUntil(SWITCH_VERIFY_MS, pollMs = 300) { !exists(SeerTemplates.PET_DEFEATED) }
+            api.waitUntil(SWITCH_VERIFY_MS, pollMs = SWITCH_POLL_MS) { !exists(SeerTemplates.PET_DEFEATED) }
         }
     }
 
-    /** Log 場上頭像 vs 目標卡頭像 similarity — for on-device coord calibration only. */
-    private fun logHeadSimilarity(cardHead: IPattern?) {
-        if (cardHead == null) return
-        runCatching { api.cropScreen(SeerLayout.FIELD_HEAD) }.getOrNull()?.let { field ->
-            val sim = api.similarity(cardHead, field)
-            field.close()
-            val mark = if (sim >= HEAD_MATCH_THRESHOLD) "≥門檻" else "<門檻(座標未校準?)"
-            api.logger.i("換精靈頭像 similarity=${"%.2f".format(sim)} $mark（診斷）")
+    /**
+     * Cheap diagnostic: the top HP-bar brightness (橘 alive ≈ bright, 陣亡 深褐 ≈ dark).
+     * One region average — replaces the old 8-scale head-similarity match, which ran
+     * matchTemplate eight times per switch (heavy, right in the sensitive window) only
+     * to print a line that drove nothing. This logs the live value so the alive/dead
+     * threshold can be confirmed on-device, then promoted to a real switch-verify gate.
+     */
+    private fun logHpBar() {
+        runCatching { api.regionMeanGray(SeerLayout.PLAYER_HP_BAR) }.getOrNull()?.let {
+            val verdict = if (it >= SeerLayout.HP_BAR_ALIVE_MIN) "活精靈" else "陣亡/空條"
+            api.logger.i("你方血條亮度=${"%.0f".format(it)} → $verdict（門檻 ${SeerLayout.HP_BAR_ALIVE_MIN.toInt()}，診斷）")
         }
     }
 
@@ -203,12 +211,12 @@ class BattleTurnRunner(
     companion object {
         private const val STUCK_LIMIT = 80
         private const val TURN_SETTLE_MS = 12_000L
-        private const val OUTCOME_POLLS = 6   // ~1.8s to read the win/lose diamond
+        private const val OUTCOME_POLLS = 12       // 讀勝負鑽石的輪數（結算畫面靜態，可安心多讀）
+        private const val OUTCOME_POLL_MS = 400L   // ≈ 4.8s 內幾乎必讀到；讀不到才落保守失敗
         private const val SWITCH_ATTEMPTS = 3 // 換人「點卡→驗證」重試次數（同一目標）
         private const val SWITCH_VERIFY_MS = 5_000L // 換人後等成功訊號（你的回合/換精靈介面消失）
-        // 頭像相似度門檻，目前僅供 verifyDeployed 的診斷 log 標記，**不主導換人成敗**
-        // （實機 FIELD_HEAD/petCardHead 座標未校準時 similarity 偏低，若用來判失敗會誤判
-        // →重試誤觸）。0.55 出自影片壓縮幀；實機校準座標後可重啟嚴格驗證。
-        private const val HEAD_MATCH_THRESHOLD = 0.55
+        // 換人驗證的輪詢間隔：由 300ms 放寬到 500ms，減少換精靈動畫期間的截圖次數
+        // （降低卡住模擬器顯示的其中一個尖峰），狀態判定本身不受影響。
+        private const val SWITCH_POLL_MS = 500L
     }
 }

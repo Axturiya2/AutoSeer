@@ -33,6 +33,16 @@ class SweepProgress(
     fun currentStageIndex(): Int = plan.stageIndexFor(battlesDone - factorStageBaseline)
 
     /**
+     * 用畫面讀到的「真實關卡 index」(0-based) 校正關卡相位：調整 [factorStageBaseline] 使
+     * [currentStageIndex] 立刻等於 [stageIdx]。用於因子續戰停在半途（遊戲從關4接、而非關1）
+     * 時，把純勝場推算的相位拉回地面真相。之後每贏一關 [battlesDone]++ 仍會自然往下一關推進，
+     * 下一關再讀一次即再校正，任何來源的偏移都不累積。
+     */
+    fun syncStageIndex(stageIdx: Int) {
+        factorStageBaseline = battlesDone + (plan.startStage - 1) - stageIdx
+    }
+
+    /**
      * Moving on to a new factor: restart the per-stage plan cursor from this
      * factor's first stage, and clear per-stage retries. [battlesDone] (the run
      * total shown in the UI) is intentionally kept.

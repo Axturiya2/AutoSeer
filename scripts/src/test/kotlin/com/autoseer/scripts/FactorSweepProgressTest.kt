@@ -20,6 +20,7 @@ class FactorSweepProgressTest {
         override val height = 1
         override fun crop(region: Region): IPattern = this
         override fun resize(size: Size): IPattern = this
+        override fun meanGray(): Double = 0.0
         override fun save(path: String) {}
     }
 

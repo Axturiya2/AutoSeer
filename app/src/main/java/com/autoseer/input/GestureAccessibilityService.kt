@@ -4,10 +4,12 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
 import java.util.concurrent.CountDownLatch
@@ -111,6 +113,40 @@ class GestureAccessibilityService : AccessibilityService(), IGestureService {
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt(); false
         }
+    }
+
+    /**
+     * Overwrite the focused editable field's text via ACTION_SET_TEXT (used to type
+     * a 因子 ID into the game's search box). No key events / clipboard — SET_TEXT
+     * replaces the whole content, so re-input is just another call.
+     */
+    override fun setText(text: String): Boolean {
+        val node = findEditableNode() ?: run {
+            Log.w(TAG, "setText：找不到可編輯輸入框（無障礙節點）"); return false
+        }
+        val args = Bundle().apply {
+            putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
+        }
+        return node.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+    }
+
+    override fun focusedText(): String? = findEditableNode()?.text?.toString()
+
+    /** Focused editable node, else the first editable node across all interactive windows. */
+    private fun findEditableNode(): AccessibilityNodeInfo? {
+        findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (it.isEditable) return it }
+        rootInActiveWindow?.let { editableIn(it)?.let { n -> return n } }
+        runCatching {
+            for (w in windows) w.root?.let { editableIn(it)?.let { n -> return n } }
+        }
+        return null
+    }
+
+    private fun editableIn(node: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
+        if (node == null) return null
+        if (node.isEditable) return node
+        for (i in 0 until node.childCount) editableIn(node.getChild(i))?.let { return it }
+        return null
     }
 
     private fun dispatch(path: Path, startMs: Long, durationMs: Long) {
