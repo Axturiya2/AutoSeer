@@ -12,6 +12,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.autoseer.R
 import android.graphics.Bitmap
 import com.autoseer.capture.ScreenCaptureManager
@@ -325,7 +326,8 @@ class AutoSeerService : Service() {
                 )
             }
         }
-        val notification: Notification = Notification.Builder(this, channelId)
+        // NotificationCompat：Notification.Builder(Context, String) 是 API 26 才有，minSdk 24 直接用會在 7.x 閃退
+        val notification: Notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle(getString(R.string.notif_title))
             .setContentText(getString(R.string.notif_text))
             .setSmallIcon(R.mipmap.ic_launcher)
