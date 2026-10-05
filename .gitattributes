@@ -1,0 +1,4 @@
+# shell 腳本與 git hook 必須是 LF，否則 shebang 變成 "bash\r" 無法執行（本機 core.autocrlf=true）
+*.sh text eol=lf
+.githooks/* text eol=lf
+*.cmd text eol=crlf
