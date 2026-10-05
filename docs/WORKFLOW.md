@@ -65,6 +65,7 @@ tools\dev.cmd setup        # 自檢 JDK/adb/SDK，並啟用 pre-push hook
 | 檔案 | 作用 |
 |------|------|
 | `CLAUDE.md` | 每次對話自動載入的專案說明＋省額度守則（刻意保持很短） |
+| `docs/STATUS.md` | 單測／建置／Lint 基準線與已知風險，大改後更新 |
 | `.claude/settings.json` | 允許 `dev.sh` 免詢問、擋大檔讀取、`dev.sh` 與 `git push` 免沙箱 |
 | `.claude/commands/ship.md`、`diag.md` | `/ship`、`/diag` |
 | `tools/dev.sh`、`tools/dev.cmd` | 建置/測試/部署/log 的單一入口 |

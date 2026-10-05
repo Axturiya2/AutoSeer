@@ -1,7 +1,7 @@
 # AutoSeer
 
 《賽爾號：巔峰之戰》免 root 自動化 App（Kotlin，多模組）。截圖 → OpenCV matchTemplate → 無障礙點擊。背景見 README.md，待辦見 `回饋與待辦.md`。
-工作流與省額度做法：`docs/WORKFLOW.md`。
+工作流與省額度做法：`docs/WORKFLOW.md`；建置／測試／Lint 基準線：`docs/STATUS.md`。
 
 ## 模組
 - `libautomata`：純 JVM 核心（Location/Region/AutomataApi/Script），可單測
@@ -12,6 +12,8 @@
 ```
 tools/dev.sh test [libautomata|scripts] [--tests '*X*']   # 純 JVM 單測，~12s，先跑這個
 tools/dev.sh check                                         # test + assembleDebug（= CI）
+tools/dev.sh build [--rerun-tasks]                         # 只建 APK；加參數可強制重建
+tools/dev.sh lint                                          # Android Lint，~35s，CI 沒跑；改 app 後跑
 tools/dev.sh install                                       # 建置→裝機→自動重新授權無障礙
 tools/dev.sh log [N]                                       # AutoSeer tag＋崩潰的最後 N 行
 tools/dev.sh shot / devices / status / setup
@@ -19,6 +21,8 @@ tools/dev.sh shot / devices / status / setup
 - 成功只印 1～3 行；失敗只印錯誤行，完整 log 在 `.dev/last-gradle.log`（用 Grep 查，別整份 Read）。
 - Bash 工具要加 `dangerouslyDisableSandbox: true`（沙箱擋 AF_UNIX，Gradle 會失敗）。
 - 多台 adb 裝置時用 `-s <序號>`；`adb install -r` 會撤銷無障礙授權，所以裝機請用 `install` 不要手動 adb。
+- Gradle log 開頭的「sdk.dir … Directory does not exist」可忽略：`local.properties` 是舊機器路徑，會改用 dev.sh 設的 `ANDROID_HOME`。
+- minSdk 24：用 API 26+ 的 Android API 要加版本判斷或改用 androidx `*Compat`，否則 `lint` 會報 NewApi。
 
 ## 開發規則
 - 座標與辨識一律在 **1280×720 正規化座標系**，輸出點擊時才換算回實機。

@@ -98,4 +98,3 @@ adb exec-out screencap -p > screen.png     # 在賽爾號各畫面各截一張
 
 > 現階段服務執行的是 `BattleScript`（讀「使用中」腳本）；`ProbeScript` 為偵測除錯用，
 > 由懸浮列「測試偵測」觸發，不會點擊畫面。
-# AutoSeer

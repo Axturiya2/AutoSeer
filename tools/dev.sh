@@ -64,11 +64,23 @@ cmd_test() {
 }
 
 cmd_build() {
-  gw :app:assembleDebug || return $?
+  gw :app:assembleDebug "$@" || return $?
   [ -f "$APK" ] && echo "  $APK ($(du -k "$APK" | cut -f1) KB)"
 }
 
 cmd_check() { cmd_test && cmd_build; }   # 等同 CI
+
+# Android Lint（CI 沒跑）：只印 Error 行＋依 issue id 的計數，完整報告看 app/build/reports/lint-results-debug.html
+LINT_TXT=app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+cmd_lint() {
+  gw :app:lintDebug "$@"; local rc=$?
+  [ -f "$LINT_TXT" ] || return $rc
+  grep -E ': Error: ' "$LINT_TXT" | sed -E 's#^.*AutoSeer[\\/]##' | head -20
+  echo "  依 issue 計數："
+  grep -oE '(Error|Warning): .*\[[A-Za-z0-9_]+\]$' "$LINT_TXT" \
+    | sed -E 's/^(Error|Warning): .*\[([A-Za-z0-9_]+)\]$/\1 \2/' | sort | uniq -c | sort -rn | head -30
+  return $rc
+}
 
 # ---- 裝置 ----
 adbq() { "$ADB" "$@" 2>&1 | tr -d '\r'; }
@@ -137,8 +149,9 @@ usage() {
   cat <<'EOF'
 tools/dev.sh [-s <adb序號>] <命令>
   test [libautomata|scripts] [--tests '*X*']   純 JVM 單測（最快的驗證，優先用）
-  build                                        assembleDebug
+  build [gradle 參數]                          assembleDebug（例：build --rerun-tasks）
   check                                        test + build（等同 CI）
+  lint [gradle 參數]                           Android Lint：Error 行＋依 issue 計數（CI 未跑）
   install                                      build → adb install -r → 自動重新授權
   grant                                        只重新授權無障礙＋懸浮窗
   log [N|-c]                                   AutoSeer tag＋崩潰的最後 N 行（預設 60）／清除
@@ -150,6 +163,6 @@ EOF
 if [ "${1:-}" = "-s" ]; then AUTOSEER_SERIAL=${2:-}; shift 2; fi
 cmd=${1:-help}; [ $# -gt 0 ] && shift
 case "$cmd" in
-  test|build|check|devices|grant|install|log|shot|status|setup) "cmd_$cmd" "$@" ;;
+  test|build|check|lint|devices|grant|install|log|shot|status|setup) "cmd_$cmd" "$@" ;;
   *) usage ;;
 esac
