@@ -6,6 +6,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
+import android.text.InputType
 import android.text.TextUtils
 import android.text.TextWatcher
 import android.view.Gravity
@@ -30,6 +31,7 @@ import com.autoseer.core.SafImage
 import com.autoseer.core.SafStore
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
+import com.autoseer.scripts.PetIdTag
 
 /**
  * 因子關卡選關 — 點選剔除式（取代舊的兩層拖放）。
@@ -38,6 +40,10 @@ import com.autoseer.core.SeerScript
  * **點卡片 = 加入/剔除**，預設全選；配 全選/全不選/反選、搜尋過濾、舊↔新 排序切換。
  * 長按一張「已選」卡可指派它專屬的腳本(否則跟隨主頁所選腳本)。儲存只寫入 [FactorPlanPrefs]，
  * 不碰導航/戰鬥模組。運行順序＝依檔名(NN)排列的已選子集。
+ *
+ * 每張卡顯示精靈編號（圖片內隱藏標籤 [PetIdTag]，舊卡退回檔名尾段）。沒有編號的卡無法搜尋導航，
+ * 故不能勾選；點它可補填編號（[SafStore.rewritePetId] 改寫標籤，不改檔名）。多餘／錯誤的卡可在
+ * 長按選單或補填視窗直接刪除（確認後 [SafStore.deleteImage]，免到檔案管理員找）。
  */
 class FactorListActivity : AppCompatActivity() {
 
@@ -49,6 +55,7 @@ class FactorListActivity : AppCompatActivity() {
     private val cSub = Color.parseColor("#AAB1BD")
     private val cAccent = Color.parseColor("#3F7BFF")
     private val cGood = Color.parseColor("#2EA36B")
+    private val cBad = Color.parseColor("#E5484D")
     private val cCell = Color.parseColor("#0B0F14")
 
     private val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
@@ -59,6 +66,8 @@ class FactorListActivity : AppCompatActivity() {
     private val selected = HashSet<String>()                 // 已選 displayName
     private val assign = HashMap<String, String?>()          // 每因子腳本 id（null＝預設）
     private val thumbs = HashMap<String, Bitmap>()
+    private val petIds = HashMap<String, String?>()          // 精靈編號（null＝無編號）
+    private var idsLoaded = false                            // 讀完前一律視為可選，避免誤剔
     private var factorScripts: List<SeerScript> = emptyList()
     private var selectedScriptName: String = ""
 
@@ -99,7 +108,7 @@ class FactorListActivity : AppCompatActivity() {
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
         content.addView(titleTv("因子關卡選關"))
-        content.addView(hintTv("點卡片＝加入/剔除（打勾＝會打）。預設全選，要跳過哪關就點掉。導航用搜尋 ID 直達，與順序無關。長按已選卡＝指派專屬腳本。"))
+        content.addView(hintTv("點卡片＝加入/剔除（打勾＝會打）。預設全選，要跳過哪關就點掉。導航用精靈編號搜尋直達，與順序無關。紅字「無編號」的卡不能選，點它可補填編號或刪除。長按卡＝指派腳本／修改編號／刪除。"))
 
         if (tree.isNullOrBlank() || allImages.isEmpty()) {
             content.addView(TextView(this).apply {
@@ -114,10 +123,10 @@ class FactorListActivity : AppCompatActivity() {
 
         // 控制列一：全選 / 全不選 / 反選
         val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row1.addView(btn("全選", cField) { selected.clear(); selected.addAll(allImages.map { it.displayName }); rebuild() }, lpW(1f))
+        row1.addView(btn("全選", cField) { selected.clear(); selected.addAll(allImages.map { it.displayName }.filter(::hasId)); rebuild() }, lpW(1f))
         row1.addView(btn("全不選", cField) { selected.clear(); rebuild() }, lpW(1f, dp(6)))
         row1.addView(btn("反選", cField) {
-            val all = allImages.map { it.displayName }.toHashSet()
+            val all = allImages.map { it.displayName }.filter(::hasId).toHashSet()
             val inv = all - selected
             selected.clear(); selected.addAll(inv); rebuild()
         }, lpW(1f, dp(6)))
@@ -170,8 +179,17 @@ class FactorListActivity : AppCompatActivity() {
         return if (sortDesc) f.sortedByDescending { it.displayName } else f.sortedBy { it.displayName }
     }
 
+    /** 有精靈編號才能選（編號尚未讀完前一律視為可選）。 */
+    private fun hasId(name: String) = !idsLoaded || petIds[name] != null
+
+    private fun countLabel(): String {
+        val usable = allImages.count { hasId(it.displayName) }
+        val noId = allImages.size - usable
+        return "已選 ${selected.size}/$usable" + if (noId > 0) " · 無編號 $noId" else ""
+    }
+
     private fun rebuild() {
-        countText.text = "已選 ${selected.size}/${allImages.size}"
+        countText.text = countLabel()
         grid.removeAllViews()
         val cells = visibleImages().map { makeCell(it) }
         var row: LinearLayout? = null
@@ -209,12 +227,21 @@ class FactorListActivity : AppCompatActivity() {
             text = name.substringBeforeLast('.'); setTextColor(cSub); textSize = 10f
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END; setPadding(0, dp(3), 0, 0)
         }
+        val idLine = TextView(this).apply {
+            val id = petIds[name]
+            text = when { !idsLoaded -> "編號…"; id != null -> "編號 $id"; else -> "無編號" }
+            setTextColor(if (idsLoaded && id == null) cBad else cSub); textSize = 10f
+            gravity = Gravity.CENTER; maxLines = 1
+        }
         col.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, WRAP))
         col.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, WRAP))
+        col.addView(idLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, WRAP))
 
         fun decorate() {
             val on = name in selected
-            frame.background = rounded(if (on) cAccent else cCell, 10)
+            frame.background = rounded(if (on) cAccent else cCell, 10).apply {
+                if (!hasId(name)) setStroke(dp(1), cBad)
+            }
             dim.visibility = if (on) View.GONE else View.VISIBLE
             badge.visibility = if (on) View.VISIBLE else View.GONE
             label.setTextColor(if (name in assign && assign[name] != null) cAccent else cSub)
@@ -222,20 +249,94 @@ class FactorListActivity : AppCompatActivity() {
         decorate()
 
         col.setOnClickListener {
+            if (!hasId(name)) { promptPetId(image); return@setOnClickListener }
             if (name in selected) selected.remove(name) else selected.add(name)
-            decorate(); countText.text = "已選 ${selected.size}/${allImages.size}"
+            decorate(); countText.text = countLabel()
         }
-        col.setOnLongClickListener {
-            if (name in selected) { pickScript(name); true } else {
-                toast("先點選加入，才能指派腳本"); true
-            }
-        }
+        col.setOnLongClickListener { showCardMenu(image); true }
         return col
+    }
+
+    /** 長按選單：指派腳本（需已選）／修改精靈編號／刪除這張卡。 */
+    private fun showCardMenu(image: SafImage) {
+        val name = image.displayName
+        AlertDialog.Builder(this)
+            .setTitle(name.substringBeforeLast('.'))
+            .setItems(arrayOf<CharSequence>("指派腳本", "修改精靈編號", "刪除這張卡")) { _, which ->
+                when (which) {
+                    0 -> if (name in selected) pickScript(name) else toast("先點選加入，才能指派腳本")
+                    1 -> promptPetId(image)
+                    else -> confirmDelete(image)
+                }
+            }
+            .show()
+    }
+
+    /** 刪除前一定先確認：從精靈圖庫資料夾永久刪檔，無法復原。 */
+    private fun confirmDelete(image: SafImage) {
+        val name = image.displayName
+        AlertDialog.Builder(this)
+            .setTitle("刪除「${name.substringBeforeLast('.')}」？")
+            .setMessage("會從精靈圖庫資料夾永久刪除這張圖，無法復原。")
+            .setPositiveButton("刪除") { _, _ ->
+                Thread {
+                    val ok = SafStore.deleteImage(this, image.uri)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        if (!ok) { toast("刪除失敗（詳見 Logcat）"); return@runOnUiThread }
+                        allImages.removeAll { it.displayName == name }
+                        selected.remove(name); assign.remove(name); petIds.remove(name)
+                        val thumb = thumbs.remove(name)
+                        rebuild()                 // 先換掉格子，再回收舊縮圖，避免畫到已回收的 Bitmap
+                        thumb?.recycle()
+                        toast("已刪除")
+                    }
+                }.start()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 填入／修改精靈編號：寫進圖片內的隱藏標籤（不改檔名），成功後這張卡就能選。 */
+    private fun promptPetId(image: SafImage) {
+        val name = image.displayName
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER; setSingleLine()
+            hint = "精靈編號（只能是數字）"; setText(petIds[name] ?: "")
+        }
+        val wrap = FrameLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(input) }
+        AlertDialog.Builder(this)
+            .setTitle("「${name.substringBeforeLast('.')}」的精靈編號")
+            .setMessage("遊戲因子搜尋框用的編號。存在圖片內，不會改檔名。")
+            .setView(wrap)
+            .setPositiveButton("儲存") { _, _ ->
+                val id = input.text.toString().trim()
+                if (!PetIdTag.isValidId(id)) { toast("精靈編號只能是數字"); return@setPositiveButton }
+                Thread {
+                    val ok = SafStore.rewritePetId(this, image.uri, id)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        if (ok) { petIds[name] = id; toast("已存編號 $id"); rebuild() }
+                        else toast("寫入失敗（只支援 PNG，詳見 Logcat）")
+                    }
+                }.start()
+            }
+            .setNeutralButton("刪除這張卡") { _, _ -> confirmDelete(image) }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun loadThumbsAsync() {
         val imgs = allImages.toList()
         Thread {
+            // 先讀編號（只讀檔頭，快），再解縮圖。
+            val ids = FactorLibrary.petIds(this, imgs)
+            runOnUiThread {
+                ids.forEach { (k, v) -> if (k !in petIds) petIds[k] = v }   // 不蓋掉剛手動填的
+                idsLoaded = true
+                selected.removeAll { !hasId(it) }   // 無編號的卡不能選（存檔裡殘留的也剔除）
+                rebuild()
+            }
             val local = HashMap<String, Bitmap>()
             for (im in imgs) {
                 if (thumbs.containsKey(im.displayName)) continue

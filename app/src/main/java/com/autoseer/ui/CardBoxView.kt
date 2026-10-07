@@ -14,7 +14,7 @@ import kotlin.math.abs
 import kotlin.math.min
 
 /** One editable card box in bitmap-pixel coordinates. */
-class CardBox(var rect: RectF, var selected: Boolean = true, var name: String = "")
+class CardBox(var rect: RectF, var selected: Boolean = true, var name: String = "", var petId: String = "")
 
 /**
  * Shows the captured screen and lets the user correct the auto-detected card

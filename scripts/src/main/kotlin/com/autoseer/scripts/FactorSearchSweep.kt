@@ -12,7 +12,8 @@ import com.autoseer.libautomata.Templates
  * 只在因子與因子之間取得控制,戰鬥流程完全不經手。
  *
  * 退回選擇格用「還在詳情頁才按返回(一步)」——不迴圈、不靠不穩的 FACTOR_GRID 樣板,避免多按
- * 越級(實機 v17 的 bug)。每個因子需有 ID(檔名 `NN_名稱_ID`);全部有 ID 時才由服務選用本類。
+ * 越級(實機 v17 的 bug)。每個因子需有精靈編號(擷取卡時填,存在圖片內的隱藏標籤 [PetIdTag]);
+ * 服務只把有編號的因子放進清單。
  */
 class FactorSearchSweep(
     private val api: AutomataApi,
@@ -60,7 +61,7 @@ class FactorSearchSweep(
     private fun goTo(t: FactorTarget, backFirst: Boolean): Boolean {
         val id = t.id
         if (id.isNullOrEmpty()) {
-            logger.w("搜尋銜接：「${t.name}」無 ID（檔名需 NN_名稱_ID），無法搜尋")
+            logger.w("搜尋銜接：「${t.name}」沒有精靈編號（擷取卡時需填），無法搜尋")
             return false
         }
         api.sleep(START_SETTLE_MS)                  // 讓畫面(開始收合/上一關結束轉場)先穩定

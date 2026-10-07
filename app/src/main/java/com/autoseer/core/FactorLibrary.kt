@@ -5,6 +5,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Log
 import com.autoseer.scripts.FactorTarget
+import com.autoseer.scripts.PetIdTag
 import org.opencv.android.Utils
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
@@ -34,8 +35,8 @@ object FactorLibrary {
         for (img in images) {
             val pattern = runCatching { decodeGray(ctx, img.uri) }.getOrNull()
             if (pattern == null) { Log.w(TAG, "圖庫圖片解碼失敗，略過：${img.displayName}"); continue }
-            val base = img.displayName.substringBeforeLast('.')   // NN_名稱_ID
-            out += FactorTarget(base, pattern, parseId(base))
+            val base = img.displayName.substringBeforeLast('.')
+            out += FactorTarget(base, pattern, PetIdTag.idFromFileName(img.displayName))
         }
         Log.i(TAG, "精靈圖庫載入 ${out.size} 張因子卡")
         return out
@@ -44,20 +45,29 @@ object FactorLibrary {
     /** Back-compat: every image in the folder, in file-name order. */
     fun load(ctx: Context): List<FactorTarget> = loadTargets(ctx, list(ctx))
 
-    /** Parse the trailing 精靈 ID from a `NN_名稱_ID` file base, or null if none. */
-    private fun parseId(base: String): String? =
-        base.substringAfterLast('_').takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
+    /**
+     * 每張圖的精靈編號（displayName → 編號，沒有＝null）：先讀圖片內的隱藏標籤
+     * ([PetIdTag])，沒有才退回檔名尾段 `_數字`（舊卡）。只讀檔頭、不解碼圖片；
+     * 會碰 SAF I/O，請在背景執行緒呼叫。
+     */
+    fun petIds(ctx: Context, images: List<SafImage>): Map<String, String?> =
+        images.associate { img ->
+            val tag = SafStore.readHead(ctx, img.uri)?.let(PetIdTag::read)
+            img.displayName to PetIdTag.resolve(tag, img.displayName)
+        }
 
     /**
-     * (file-base-name, id) for every library file that carries a `NN_名稱_ID` id, in
-     * file-name order — WITHOUT decoding the images. Feeds the search-based navigation,
-     * which only needs the id (no template matching).
+     * (file-base-name, id) for every library file that has a 精靈編號, in file-name
+     * order — WITHOUT decoding the images. Feeds the search-based navigation, which
+     * only needs the id (no template matching). Background thread (SAF I/O).
      */
-    fun listWithIds(ctx: Context): List<Pair<String, String>> =
-        list(ctx).mapNotNull { img ->
-            val base = img.displayName.substringBeforeLast('.')
-            parseId(base)?.let { base to it }
+    fun listWithIds(ctx: Context): List<Pair<String, String>> {
+        val imgs = list(ctx)
+        val ids = petIds(ctx, imgs)
+        return imgs.mapNotNull { img ->
+            ids[img.displayName]?.let { img.displayName.substringBeforeLast('.') to it }
         }
+    }
 
     private fun decodeGray(ctx: Context, uri: Uri): OpenCvPattern {
         val bmp = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }

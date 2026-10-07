@@ -7,6 +7,7 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
 import android.view.View
@@ -17,9 +18,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.autoseer.core.FactorLibrary
 import com.autoseer.core.PetImagePrefs
 import com.autoseer.core.SafStore
+import com.autoseer.scripts.PetIdTag
 import com.autoseer.vision.CardDetector
 import java.io.File
 import java.text.SimpleDateFormat
@@ -49,6 +53,9 @@ class CardCaptureActivity : AppCompatActivity() {
     private val cSub = Color.parseColor("#AAB1BD")
     private val cAccent = Color.parseColor("#3F7BFF")
     private val cGood = Color.parseColor("#2EA36B")
+    private val cBad = Color.parseColor("#E5484D")
+
+    private var checking = false   // 存檔前背景比對圖庫編號中，防連按
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -82,7 +89,8 @@ class CardCaptureActivity : AppCompatActivity() {
             text = "擷取檢視 · 精靈圖像卡"; setTextColor(cInk); textSize = 17f; setTypeface(typeface, Typeface.BOLD)
         }
         val hint = TextView(this).apply {
-            text = "點框選取/取消（實線＝已選）；拖動框身可移動，拖右下角可縮放。偵測不準就用下方按鈕增/刪框。"
+            text = "點框選取/取消（實線＝已選）；拖動框身可移動，拖右下角可縮放。偵測不準就用下方按鈕增/刪框。\n" +
+                "每張卡填：檔名（自由命名）＋精靈編號＊（遊戲因子搜尋框用的編號，AS 用它自動找關；存在圖片內，不會出現在檔名）。"
             setTextColor(cSub); textSize = 12f; setPadding(0, dp(4), 0, dp(8))
         }
 
@@ -147,17 +155,36 @@ class CardCaptureActivity : AppCompatActivity() {
                 setImageBitmap(boxView.crop(bmp, box)); scaleType = ImageView.ScaleType.FIT_CENTER
             }
             val edit = EditText(this).apply {
-                setText(box.name); hint = "命名（例：厄孽提亞）"
+                setText(box.name); hint = "檔名：自由命名（例：厄孽提亞）"
                 setTextColor(cInk); setHintTextColor(cSub); textSize = 14f
-                setBackgroundColor(Color.TRANSPARENT)
+                setBackgroundColor(Color.TRANSPARENT); setSingleLine()
                 addTextChangedListener(object : TextWatcher {
                     override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                     override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) { box.name = s?.toString() ?: "" }
                     override fun afterTextChanged(s: Editable?) {}
                 })
             }
+            // 精靈編號＊：必填、只收數字；存成圖片內的隱藏標籤（PetIdTag），不進檔名。
+            val idEdit = EditText(this).apply {
+                setText(box.petId); hint = "精靈編號＊（必填）"
+                setTextColor(cInk); setHintTextColor(cSub); textSize = 14f
+                inputType = InputType.TYPE_CLASS_NUMBER; setSingleLine()
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                background = idBg(PetIdTag.isValidId(box.petId.trim()))
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {
+                        box.petId = s?.toString()?.trim() ?: ""
+                        background = idBg(PetIdTag.isValidId(box.petId))
+                    }
+                    override fun afterTextChanged(s: Editable?) {}
+                })
+            }
+            val fields = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            fields.addView(edit, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            fields.addView(idEdit, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
             row.addView(thumb, LinearLayout.LayoutParams(dp(40), dp(56)).apply { rightMargin = dp(10) })
-            row.addView(edit, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(fields, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
             nameList.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
         }
     }
@@ -171,16 +198,57 @@ class CardCaptureActivity : AppCompatActivity() {
         }
         val sel = boxView.selectedBoxes()
         if (sel.isEmpty()) { Toast.makeText(this, "請先選取要存的卡", Toast.LENGTH_SHORT).show(); return }
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+        val missing = sel.indexOfFirst { !PetIdTag.isValidId(it.petId.trim()) }
+        if (missing >= 0) {
+            Toast.makeText(this, "第 ${missing + 1} 張還沒填精靈編號（必填，只能是數字）", Toast.LENGTH_LONG).show()
+            return
+        }
+        val dup = sel.groupBy { it.petId.trim() }.filterValues { it.size > 1 }.keys
+        if (dup.isNotEmpty()) {
+            Toast.makeText(this, "精靈編號重複：${dup.joinToString()}（同一批每張要不同）", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (checking) return
+        checking = true
+        countText.text = "檢查圖庫是否已有相同編號…"
+        // 讀整個圖庫的編號要碰 SAF I/O → 背景執行緒，回主執行緒再決定直接存或先確認。
+        Thread {
+            val existing = FactorLibrary.petIds(this, FactorLibrary.list(this))
+            val clash = sel.mapNotNull { b ->
+                existing.entries.firstOrNull { it.value == b.petId.trim() }?.let { "${b.petId.trim()}（${it.key}）" }
+            }
+            runOnUiThread {
+                checking = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                countText.text = "已選取 ${sel.size} 張（命名後存檔）"
+                if (clash.isEmpty()) { doSave(bmp, tree, sel); return@runOnUiThread }
+                AlertDialog.Builder(this)
+                    .setTitle("精靈編號已在圖庫")
+                    .setMessage("以下編號已有卡：\n${clash.joinToString("\n")}\n\n仍要另存一張嗎？")
+                    .setPositiveButton("仍要存檔") { _, _ -> doSave(bmp, tree, sel) }
+                    .setNegativeButton("返回修改", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun doSave(bmp: Bitmap, tree: String, sel: List<CardBox>) {
+        // 預設檔名不含底線，避免被舊的「檔名尾段＝編號」規則誤判；編號一律存在圖片內的隱藏標籤。
+        val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         var ok = 0
         sel.forEachIndexed { i, box ->
-            val safe = sanitize(box.name).ifBlank { "pet_${stamp}_${i + 1}" }
+            val safe = sanitize(box.name).ifBlank { "pet-${stamp}-${i + 1}" }
             val crop = boxView.crop(bmp, box)
-            if (SafStore.writePng(this, tree, safe, crop)) ok++
+            if (SafStore.writePng(this, tree, safe, crop, box.petId.trim())) ok++
             crop.recycle()
         }
         Toast.makeText(this, "已儲存 $ok / ${sel.size} 張到圖庫（${SafStore.folderLabel(tree)}）", Toast.LENGTH_LONG).show()
         if (ok > 0) finish()
+    }
+
+    /** 精靈編號欄底色：合法＝一般框，不合法／未填＝紅框。 */
+    private fun idBg(valid: Boolean) = rounded(cField, 8).apply {
+        setStroke(dp(1), if (valid) cLine else cBad)
     }
 
     private fun sanitize(name: String): String =

@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.autoseer.scripts.PetIdTag
+import java.io.ByteArrayOutputStream
 
 /** One image file inside the SAF folder: its display name (with extension) and URI. */
 data class SafImage(val displayName: String, val uri: Uri)
@@ -31,25 +33,59 @@ object SafStore {
 
     /**
      * Write [bmp] as a PNG named [displayName].png into the SAF [treeUri] folder.
-     * The framework auto-dedupes clashing names (adds "(1)"). Returns true on success.
+     * The framework auto-dedupes clashing names (adds "(1)"). [petId] (if given) is
+     * embedded as the hidden 精靈編號 tag ([PetIdTag]), not put in the name.
+     * Returns true on success.
      */
-    fun writePng(ctx: Context, treeUri: String, displayName: String, bmp: Bitmap): Boolean {
+    fun writePng(ctx: Context, treeUri: String, displayName: String, bmp: Bitmap, petId: String? = null): Boolean {
         return try {
             val tree = Uri.parse(treeUri)
             val dirDocId = DocumentsContract.getTreeDocumentId(tree)
             val dirUri = DocumentsContract.buildDocumentUriUsingTree(tree, dirDocId)
             val name = if (displayName.endsWith(".png", true)) displayName else "$displayName.png"
+            val bytes = ByteArrayOutputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
+            val data = if (petId != null) PetIdTag.embed(bytes, petId) else bytes
             val fileUri = DocumentsContract.createDocument(
                 ctx.contentResolver, dirUri, "image/png", name,
             ) ?: run { Log.e(TAG, "SAF createDocument 回傳 null：$name"); return false }
-            ctx.contentResolver.openOutputStream(fileUri)?.use { out ->
-                bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
-            } ?: run { Log.e(TAG, "SAF openOutputStream 失敗：$name"); return false }
+            ctx.contentResolver.openOutputStream(fileUri)?.use { it.write(data) }
+                ?: run { Log.e(TAG, "SAF openOutputStream 失敗：$name"); return false }
             true
         } catch (e: Exception) {
             Log.e(TAG, "SAF 寫檔失敗：$displayName", e)
             false
         }
+    }
+
+    /** First [max] bytes of a SAF file (enough for the PNG header + [PetIdTag]), or null. */
+    fun readHead(ctx: Context, uri: Uri, max: Int = 4096): ByteArray? = try {
+        ctx.contentResolver.openInputStream(uri)?.use { input ->
+            val buf = ByteArray(max)
+            var n = 0
+            while (n < max) {
+                val r = input.read(buf, n, max - n)
+                if (r < 0) break
+                n += r
+            }
+            buf.copyOf(n)
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "SAF 讀檔頭失敗：$uri", e); null
+    }
+
+    /**
+     * Rewrite the hidden 精靈編號 tag of an existing PNG in place (pixels untouched).
+     * Returns false if the file can't be read/written or isn't a PNG.
+     */
+    fun rewritePetId(ctx: Context, uri: Uri, petId: String): Boolean = try {
+        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("openInputStream 回傳 null")
+        val data = PetIdTag.embed(bytes, petId)
+        ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(data) }
+            ?: error("openOutputStream 回傳 null")
+        true
+    } catch (e: Exception) {
+        Log.e(TAG, "SAF 改寫精靈編號失敗：$uri", e); false
     }
 
     /**

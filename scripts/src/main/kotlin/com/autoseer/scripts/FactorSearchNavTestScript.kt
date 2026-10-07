@@ -23,7 +23,7 @@ class FactorSearchNavTestScript(
     override fun run() {
         val take = targets.take(MAX_TEST)
         if (take.isEmpty()) {
-            api.logger.w("沒有帶 ID 的因子卡（檔名需為 NN_名稱_ID），請先改檔名再測。")
+            api.logger.w("沒有帶精靈編號的因子卡（擷取卡時需填，舊卡可在選關頁點卡補填），請先補上再測。")
             return
         }
         api.logger.i("搜尋導航測試：${take.size} 個因子（不打戰鬥，按停止結束）")

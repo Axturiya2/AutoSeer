@@ -3,18 +3,18 @@
 用來比對「有沒有退步」的快照。大改（升級依賴、動建置設定、修 Lint）後跑一次
 `tools/dev.sh check` 與 `tools/dev.sh lint`，有變就更新本表。待辦與 BUG 細節在 `回饋與待辦.md`。
 
-最後更新：2026-10-05（BUG-2 修正後）
+最後更新：2026-10-06（精靈編號隱藏標籤、BUG-4 修正後）
 
 ## 驗證結果
 
 | 項目 | 結果 | 指令 |
 |------|------|------|
-| 單測 | ✅ 34 個，失敗 0、錯誤 0（強制重跑約 12s） | `tools/dev.sh test` |
+| 單測 | ✅ 48 個，失敗 0、錯誤 0（強制重跑約 12s） | `tools/dev.sh test` |
 | 建置 | ✅ `app-debug.apk` 46.5 MB，無 Kotlin 編譯警告 | `tools/dev.sh build` |
-| Lint | ✅ 0 error／119 warning（見下） | `tools/dev.sh lint` |
-| 實機啟動 | ⚠️ 未驗證：檢查時沒有 adb 裝置 | `tools/dev.sh install` → `log` |
+| Lint | ✅ 0 error／121 warning（見下） | `tools/dev.sh lint` |
+| 實機啟動 | ✅ 2026-10-06 使用者實機：擷取卡存檔＋精靈編號搜尋導航正常 | `tools/dev.sh install` → `log` |
 
-Lint 警告分布：UnusedResources 31、SetTextI18n 25、GradleDependency 15、Autofill 10、
+Lint 警告分布：UnusedResources 31、SetTextI18n 27、GradleDependency 15、Autofill 10、
 Overdraw 9、HardcodedText 9、LabelFor 8、AndroidGradlePluginVersion 6、DrawAllocation 3、
 ObsoleteSdkInt／MonochromeLauncherIcon／ChromeOsAbiSupport 各 1。全是警告，暫不處理。
 

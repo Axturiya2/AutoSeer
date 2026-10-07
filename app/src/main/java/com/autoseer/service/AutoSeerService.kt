@@ -160,25 +160,40 @@ class AutoSeerService : Service() {
         val delays = DelayPrefs.toBattleDelays(this)
         val defaultPlan = parseFactorPlan(script)
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(defaultPlan)}")
-        // 多因子銜接＋每因子腳本：依「因子關卡排序」取得(因子, 指派腳本)清單，對齊解出各自作戰計畫；
-        // 未指派＝跟隨主畫面所選腳本。此只驅動「選擇/進入」導航與挑哪個計畫，戰鬥回合引擎不受影響。
-        val entries = FactorPlan.resolvedEntries(this)
-        val factorTargets = ArrayList<FactorTarget>()
-        val factorPlans = ArrayList<BattlePlan>()
-        for (e in entries) {
-            val scr = e.scriptId?.let { ScriptStore.get(this, it) } ?: script
-            // 直接從檔名尾端解析 精靈ID：先去副檔名(e.name 形如 NN_名稱_ID.png)，再取最後一段數字。
-            val base = e.name.substringBeforeLast('.')
-            val id = base.substringAfterLast('_').takeIf { it.isNotEmpty() && it.all(Char::isDigit) }
-            factorTargets += FactorTarget(e.name, id = id)
-            factorPlans += parseFactorPlan(scr)
+        if (script.category != SeerScript.CATEGORY_SEER_FACTOR) {
+            runner.start { api -> BattleScript(api, templates, defaultPlan, delays) }
+            return
         }
-        runner.start { api ->
-            if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
+        // 讀精靈編號要碰 SAF I/O（每張讀檔頭），放背景執行緒組好清單再啟動（overlay/runner.start 皆可跨執行緒）。
+        Thread {
+            // 多因子銜接＋每因子腳本：依「因子關卡排序」取得(因子, 指派腳本)清單，對齊解出各自作戰計畫；
+            // 未指派＝跟隨主畫面所選腳本。此只驅動「選擇/進入」導航與挑哪個計畫，戰鬥回合引擎不受影響。
+            val entries = FactorPlan.resolvedEntries(this)
+            val byName = FactorLibrary.list(this).associateBy { it.displayName }
+            val ids = FactorLibrary.petIds(this, entries.mapNotNull { byName[it.name] })
+            val factorTargets = ArrayList<FactorTarget>()
+            val factorPlans = ArrayList<BattlePlan>()
+            val skipped = ArrayList<String>()
+            for (e in entries) {
+                // 精靈編號＝圖片內隱藏標籤（舊卡退回檔名尾段）；沒有就無法搜尋導航 → 略過，
+                // factorTargets／factorPlans 同步略過以維持索引對齊。
+                val id = ids[e.name]
+                if (id == null) { skipped += e.name; continue }
+                val scr = e.scriptId?.let { ScriptStore.get(this, it) } ?: script
+                factorTargets += FactorTarget(e.name, id = id)
+                factorPlans += parseFactorPlan(scr)
+            }
+            if (skipped.isNotEmpty()) Log.w(TAG, "略過 ${skipped.size} 個無精靈編號的因子：${skipped.joinToString()}")
+            if (entries.isNotEmpty() && factorTargets.isEmpty()) {
+                overlay?.setStatus("⚠ 所選因子都沒有精靈編號，無法導航。請到「因子關卡排序」點卡補填編號")
+                return@Thread
+            }
+            val skipNote = if (skipped.isEmpty()) "" else "｜略過無編號 ${skipped.size} 個"
+            runner.start { api ->
                 // 銜接＝「搜尋 ID 直達」（FactorSearchSweep）；捲動比對導航已移除。
                 val sweep = if (factorTargets.isNotEmpty()) {
-                    api.logger.i("搜尋銜接：${factorTargets.size} 個因子（用ID搜尋直達）")
-                    overlay?.setStatus("搜尋銜接：${factorTargets.size} 個因子")
+                    api.logger.i("搜尋銜接：${factorTargets.size} 個因子（用ID搜尋直達）$skipNote")
+                    overlay?.setStatus("搜尋銜接：${factorTargets.size} 個因子$skipNote")
                     FactorSearchSweep(
                         api, templates, FactorSweepProgress(factorTargets), delays, api.logger,
                         // 每打完一個因子（達每日上限）就把它從選關計畫移除＝取消勾選，方便事後排查
@@ -193,10 +208,8 @@ class AutoSeerService : Service() {
                     factorPlans = factorPlans.takeIf { it.isNotEmpty() },
                     onProgress = { stageNo, cleared -> overlay?.setProgress(stageNo, cleared) },
                 )
-            } else {
-                BattleScript(api, templates, defaultPlan, delays)
             }
-        }
+        }.start()
     }
 
     /**
@@ -293,16 +306,18 @@ class AutoSeerService : Service() {
             overlay?.setStatus("⚠ 無障礙服務未連線，無法點擊。請先到設定開啟")
             return
         }
-        // 因子「搜尋導航」測試：讀圖庫中 NN_名稱_ID 檔名的 ID，逐一「搜尋→點結果→進詳情→退出」。
-        // 先在因子選擇格畫面按此鈕。結果見狀態列/Logcat（tag AutoSeer）。
-        val idTargets = FactorLibrary.listWithIds(this)
-        if (idTargets.isEmpty()) {
-            overlay?.setStatus("⚠ 圖庫沒有帶ID的因子卡（檔名需 NN_名稱_ID）")
-            return
-        }
-        overlay?.setStatus("因子搜尋導航測試：${idTargets.size} 個帶ID因子（見 Logcat）")
+        // 因子「搜尋導航」測試：讀圖庫每張卡的精靈編號，逐一「搜尋→點結果→進詳情→退出」。
+        // 先在因子選擇格畫面按此鈕。結果見狀態列/Logcat（tag AutoSeer）。讀編號碰 SAF I/O → 背景執行緒。
         val templates = DeviceTemplates(this)
-        runner.start { api -> FactorSearchNavTestScript(api, templates, idTargets) }
+        Thread {
+            val idTargets = FactorLibrary.listWithIds(this)
+            if (idTargets.isEmpty()) {
+                overlay?.setStatus("⚠ 圖庫沒有帶精靈編號的因子卡（擷取卡時需填精靈編號）")
+                return@Thread
+            }
+            overlay?.setStatus("因子搜尋導航測試：${idTargets.size} 個帶編號因子（見 Logcat）")
+            runner.start { api -> FactorSearchNavTestScript(api, templates, idTargets) }
+        }.start()
     }
 
     /** Run the detection probe: report each template's match score without tapping anything. */
