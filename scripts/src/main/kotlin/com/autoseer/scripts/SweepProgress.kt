@@ -21,6 +21,17 @@ class SweepProgress(
     var retriesThisStage = 0
         private set
 
+    /** Main-loop passes spent on the current factor (reset on [onFactorSwitch]). */
+    var loopsThisFactor = 0
+        private set
+
+    /**
+     * 主迴圈每跑一圈呼叫一次；回傳 false＝這個因子已跑滿 [cap] 圈（防呆停止）。
+     * 上限算「每個因子」而非整次執行：舊版整次共用一個總上限，一個因子每天約 15 場，
+     * 勾 15 個因子會在第 13～14 個途中被誤停（實機 2026-10-08）。
+     */
+    fun tickLoop(cap: Int): Boolean = ++loopsThisFactor <= cap
+
     /**
      * [battlesDone] value at which the current factor started, so the per-stage
      * plan cursor is relative to *this* factor (multi-factor 銜接): switching to a
@@ -44,8 +55,9 @@ class SweepProgress(
 
     /**
      * Moving on to a new factor: restart the per-stage plan cursor from this
-     * factor's first stage, and clear per-stage retries. [battlesDone] (the run
-     * total shown in the UI) is intentionally kept.
+     * factor's first stage, and clear per-stage retries and the per-factor loop
+     * count ([tickLoop]). [battlesDone] (the run total shown in the UI) is
+     * intentionally kept.
      *
      * [newPlan] swaps the active battle plan for the new factor (per-factor scripts,
      * 情況2); null keeps the current plan (single-plan sweep, 情況1 — unchanged).
@@ -54,6 +66,7 @@ class SweepProgress(
         if (newPlan != null) plan = newPlan
         factorStageBaseline = battlesDone
         retriesThisStage = 0
+        loopsThisFactor = 0
     }
 
     /** Won the current stage: advance to the next, reset per-stage retries. */

@@ -9,7 +9,7 @@
 
 | 項目 | 結果 | 指令 |
 |------|------|------|
-| 單測 | ✅ 48 個，失敗 0、錯誤 0（強制重跑約 12s） | `tools/dev.sh test` |
+| 單測 | ✅ 50 個，失敗 0、錯誤 0（強制重跑約 12s） | `tools/dev.sh test` |
 | 建置 | ✅ `app-debug.apk` 46.5 MB，無 Kotlin 編譯警告 | `tools/dev.sh build` |
 | Lint | ✅ 0 error／121 warning（見下） | `tools/dev.sh lint` |
 | 實機啟動 | ✅ 2026-10-06 使用者實機：擷取卡存檔＋精靈編號搜尋導航正常 | `tools/dev.sh install` → `log` |

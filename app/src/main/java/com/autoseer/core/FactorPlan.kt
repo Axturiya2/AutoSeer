@@ -11,8 +11,9 @@ import com.autoseer.scripts.FactorTarget
  * Rules (open-box safe):
  *  - Saved plan present → keep only entries whose file still exists, in the saved order.
  *  - No saved plan, OR the reconciled result is empty (e.g. the folder was switched
- *    and the old names are gone) → fall back to every image, file-name order, with no
- *    per-factor script assignment.
+ *    and the old names are gone) → fall back to every image, file-name order.
+ *  - Per-factor script ids come from [FactorPlanPrefs.getAssignments] (kept even after a
+ *    finished factor is unchecked); a legacy entry's own script id is used only if absent.
  *
  * [resolvedEntries] also carries each factor's assigned script id (null = follow the
  * main-screen selected script). This only feeds the "選擇/進入" navigation and the
@@ -26,12 +27,15 @@ object FactorPlan {
         val all = FactorLibrary.list(ctx)
         val names = all.map { it.displayName }.toHashSet()
         val saved = FactorPlanPrefs.getEntries(ctx)
-        val ordered = saved?.filter { it.name in names } ?: emptyList()
+        // 腳本綁定以獨立存的對照表為準（打完取消勾選也不會消失），舊存檔只在表裡沒有時補用。
+        val assign = FactorPlanPrefs.getAssignments(ctx)
+        val ordered = saved?.filter { it.name in names }
+            ?.map { FactorPlanEntry(it.name, assign[it.name] ?: it.scriptId) } ?: emptyList()
         if (ordered.isNotEmpty()) return ordered
         if (saved != null && all.isNotEmpty()) {
             Log.i(TAG, "因子排序計畫與圖庫對不上（可能換過資料夾/未選任何項），退回全部依檔名")
         }
-        return all.map { FactorPlanEntry(it.displayName, null) }
+        return all.map { FactorPlanEntry(it.displayName, assign[it.displayName]) }
     }
 
     /** Ordered [FactorTarget]s to sweep, decoded in [resolvedEntries] order. */

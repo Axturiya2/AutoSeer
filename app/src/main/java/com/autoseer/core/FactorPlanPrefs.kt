@@ -24,6 +24,7 @@ data class FactorPlanEntry(val name: String, val scriptId: String?)
 object FactorPlanPrefs {
     private const val PREFS = "factor_plan_prefs"
     private const val KEY_ORDER = "order_json"
+    private const val KEY_ASSIGN = "assign_json"
 
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -59,4 +60,28 @@ object FactorPlanPrefs {
     }
 
     fun hasPlan(ctx: Context): Boolean = prefs(ctx).contains(KEY_ORDER)
+
+    /**
+     * 每因子的腳本綁定（displayName → scriptId），跟勾選分開存：因子打完被取消勾選時
+     * 綁定不會跟著消失，隔天重新勾選就自動帶回。存成 JSON 物件 {name: scriptId}。
+     */
+    fun getAssignments(ctx: Context): Map<String, String> {
+        val s = prefs(ctx).getString(KEY_ASSIGN, null) ?: return emptyMap()
+        return runCatching {
+            val o = JSONObject(s)
+            o.keys().asSequence().mapNotNull { k -> o.optString(k, "").ifBlank { null }?.let { k to it } }.toMap()
+        }.getOrDefault(emptyMap())
+    }
+
+    fun setAssignments(ctx: Context, map: Map<String, String>) {
+        val o = JSONObject()
+        map.forEach { (k, v) -> o.put(k, v) }
+        prefs(ctx).edit().putString(KEY_ASSIGN, o.toString()).apply()
+    }
+
+    /** 刪卡時一併清掉它的綁定，免得之後同名新卡繼承舊腳本。 */
+    fun removeAssignment(ctx: Context, name: String) {
+        val m = getAssignments(ctx)
+        if (name in m) setAssignments(ctx, m - name)
+    }
 }

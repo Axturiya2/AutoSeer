@@ -88,11 +88,15 @@ class FactorListActivity : AppCompatActivity() {
         factorScripts = ScriptStore.list(this, SeerScript.CATEGORY_SEER_FACTOR)
         selectedScriptName = ScriptStore.selected(this)?.displayName ?: ""
 
+        // 腳本綁定：讀獨立存的對照表（整份載入，連目前資料夾沒有的也保留，存回時不丟）；
+        // 舊存檔的綁定只在表裡沒有時補上（相容舊版）。打完被取消勾選的因子，綁定仍在。
+        assign.putAll(FactorPlanPrefs.getAssignments(this))
         // 初始化已選：有存過計畫→沿用(對齊現存檔案)；沒存過→預設全選。
         val existing = allImages.map { it.displayName }.toHashSet()
         val saved = FactorPlanPrefs.getEntries(this)
+        saved?.forEach { if (it.scriptId != null && it.name !in assign) assign[it.name] = it.scriptId }
         if (saved != null) {
-            saved.forEach { if (it.name in existing) { selected.add(it.name); assign[it.name] = it.scriptId } }
+            saved.forEach { if (it.name in existing) selected.add(it.name) }
         } else {
             selected.addAll(existing)
         }
@@ -108,7 +112,7 @@ class FactorListActivity : AppCompatActivity() {
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
         content.addView(titleTv("因子關卡選關"))
-        content.addView(hintTv("點卡片＝加入/剔除（打勾＝會打）。預設全選，要跳過哪關就點掉。導航用精靈編號搜尋直達，與順序無關。紅字「無編號」的卡不能選，點它可補填編號或刪除。長按卡＝指派腳本／修改編號／刪除。"))
+        content.addView(hintTv("點卡片＝加入/剔除（打勾＝會打）。預設全選，要跳過哪關就點掉。導航用精靈編號搜尋直達，與順序無關。紅字「無編號」的卡不能選，點它可補填編號或刪除。長按卡＝指派腳本／修改編號／刪除。打完的因子會自動取消勾選，指派的腳本會保留（名稱變藍＝有綁腳本），重新勾選就沿用。"))
 
         if (tree.isNullOrBlank() || allImages.isEmpty()) {
             content.addView(TextView(this).apply {
@@ -264,7 +268,7 @@ class FactorListActivity : AppCompatActivity() {
             .setTitle(name.substringBeforeLast('.'))
             .setItems(arrayOf<CharSequence>("指派腳本", "修改精靈編號", "刪除這張卡")) { _, which ->
                 when (which) {
-                    0 -> if (name in selected) pickScript(name) else toast("先點選加入，才能指派腳本")
+                    0 -> pickScript(name)   // 綁定獨立保存，沒勾的卡也能先綁
                     1 -> promptPetId(image)
                     else -> confirmDelete(image)
                 }
@@ -286,6 +290,7 @@ class FactorListActivity : AppCompatActivity() {
                         if (!ok) { toast("刪除失敗（詳見 Logcat）"); return@runOnUiThread }
                         allImages.removeAll { it.displayName == name }
                         selected.remove(name); assign.remove(name); petIds.remove(name)
+                        FactorPlanPrefs.removeAssignment(this, name)   // 免得同名新卡繼承舊腳本
                         val thumb = thumbs.remove(name)
                         rebuild()                 // 先換掉格子，再回收舊縮圖，避免畫到已回收的 Bitmap
                         thumb?.recycle()
@@ -347,10 +352,14 @@ class FactorListActivity : AppCompatActivity() {
         }.start()
     }
 
-    /** 儲存：已選子集依檔名(NN)排列 + 各自的腳本指派。運行順序對搜尋導航無影響。 */
+    /**
+     * 儲存：已選子集依檔名(NN)排列 + 各自的腳本指派；另把「所有卡」的綁定存進獨立對照表，
+     * 沒勾的卡也保留綁定。運行順序對搜尋導航無影響。
+     */
     private fun persist() {
         val ordered = allImages.map { it.displayName }.filter { it in selected }
         FactorPlanPrefs.setEntries(this, ordered.map { FactorPlanEntry(it, assign[it]) })
+        FactorPlanPrefs.setAssignments(this, assign.mapNotNull { (k, v) -> v?.let { k to it } }.toMap())
     }
 
     /** 長按已選卡：指派它專屬的腳本（或跟隨主頁所選）。 */

@@ -123,4 +123,24 @@ class SweepProgressTest {
         p.onFactorSwitch()
         assertEquals(0, p.retriesThisStage)
     }
+
+    @Test
+    fun loopCapStopsAfterCapPassesOnOneFactor() {
+        val p = SweepProgress(plan())
+        repeat(3) { assertEquals(true, p.tickLoop(cap = 3)) }
+        assertEquals(false, p.tickLoop(cap = 3))       // 第 4 圈超過上限
+    }
+
+    @Test
+    fun loopCapIsPerFactorNotPerRun() {
+        // 實機 2026-10-08：勾 15 個因子，每個約 15 場，舊版整次共用 200 圈 → 第 14 個途中被誤停。
+        val p = SweepProgress(plan())
+        repeat(15) {                                   // 15 個因子
+            repeat(16) { assertEquals(true, p.tickLoop(cap = 200)) }
+            p.onFactorSwitch()
+        }
+        assertEquals(0, p.loopsThisFactor)
+        repeat(200) { assertEquals(true, p.tickLoop(cap = 200)) }   // 新因子仍有完整 200 圈
+        assertEquals(false, p.tickLoop(cap = 200))
+    }
 }

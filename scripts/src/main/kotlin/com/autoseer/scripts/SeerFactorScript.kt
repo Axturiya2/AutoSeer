@@ -67,9 +67,11 @@ class SeerFactorScript(
             return
         }
         var unknown = 0
-        var iterations = 0
         while (!stop) {
-            if (++iterations > SAFETY_CAP) { api.logger.w("達安全上限（$SAFETY_CAP），停止防呆。"); break }
+            // 防呆上限算「每個因子」（換因子時歸零），多因子銜接不會在中途被總上限誤停。
+            if (!progress.tickLoop(SAFETY_CAP)) {
+                api.logger.w("此因子主迴圈達安全上限（$SAFETY_CAP 圈），停止防呆。"); break
+            }
             api.refreshScreen()
 
             // 次數用盡：整個掃蕩結束 → 回大廳
@@ -310,7 +312,7 @@ class SeerFactorScript(
         private const val WAIT_UI_MS = 12_000L
         private const val WAIT_TURN_MS = 90_000L  // 等你的回合（先制/長開場）
         private const val STUCK_LIMIT = 40
-        private const val SAFETY_CAP = 200        // 防呆：正常會由「達到上限」先結束
+        private const val SAFETY_CAP = 200        // 防呆（每個因子）：正常會由「達到上限」先結束
         private const val DISMISS_TRIES = 5       // 結算畫面點繼續的重試次數
         private const val ENTRY_TRIES = 5         // 點開啟/繼續挑戰、等資訊卡展開的重試次數
         private const val ENTRY_POLL_MS = 180L    // 展開資訊卡：點擊後快速輪詢「精靈恢復」的間隔
