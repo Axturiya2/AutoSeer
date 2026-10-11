@@ -4,7 +4,7 @@ import android.content.Context
 
 /**
  * Global execution options (shared by all scripts) per the finalized UI:
- * 起始關卡、預設技能格、戰前恢復. Delays live in [DelayPrefs].
+ * 起始關卡、預設技能格、戰前恢復、每關重試上限. Delays live in [DelayPrefs].
  *
  * 清關場數上限與循環輪數已移除——精靈因子改由畫面「達到每天操作上限」字樣自然結束。
  */
@@ -14,6 +14,7 @@ object RunPrefs {
     private const val KEY_DEFAULT_SLOT = "default_slot"
     private const val KEY_HEAL = "heal_before_battle"
     private const val KEY_LOBBY_ON_EXHAUST = "lobby_on_retry_exhausted"
+    private const val KEY_MAX_RETRIES = "max_retries_per_stage"
 
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -27,18 +28,26 @@ object RunPrefs {
     fun backToLobbyOnRetryExhausted(ctx: Context): Boolean =
         prefs(ctx).getBoolean(KEY_LOBBY_ON_EXHAUST, false)
 
+    /**
+     * 同一關連續失敗/撤退後最多重打幾次（0＝不限）。所有腳本共用，取代腳本自帶的 maxRetries
+     * （舊版有欄位，改版後介面拿掉，等於固定 5）。
+     */
+    fun maxRetriesPerStage(ctx: Context): Int = prefs(ctx).getInt(KEY_MAX_RETRIES, 5)
+
     fun save(
         ctx: Context,
         startStage: Int,
         defaultSlot: Int,
         healBeforeBattle: Boolean,
         backToLobbyOnRetryExhausted: Boolean,
+        maxRetriesPerStage: Int,
     ) {
         prefs(ctx).edit()
             .putInt(KEY_START_STAGE, startStage.coerceAtLeast(1))
             .putInt(KEY_DEFAULT_SLOT, defaultSlot.coerceIn(1, 5))
             .putBoolean(KEY_HEAL, healBeforeBattle)
             .putBoolean(KEY_LOBBY_ON_EXHAUST, backToLobbyOnRetryExhausted)
+            .putInt(KEY_MAX_RETRIES, maxRetriesPerStage.coerceAtLeast(0))
             .apply()
     }
 }

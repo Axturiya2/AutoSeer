@@ -15,4 +15,7 @@ interface FactorSweep {
 
     /** Move to the next target's 詳情頁. false = list finished or navigation failed. */
     fun advanceToNext(): Boolean
+
+    /** true = every target is done; tells "list finished" apart from "navigation failed" after [advanceToNext] returns false. */
+    val allDone: Boolean
 }

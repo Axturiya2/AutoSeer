@@ -125,21 +125,40 @@ class SweepProgressTest {
     }
 
     @Test
-    fun loopCapStopsAfterCapPassesOnOneFactor() {
+    fun loopCapStopsAfterCapPassesWithoutProgress() {
         val p = SweepProgress(plan())
         repeat(3) { assertEquals(true, p.tickLoop(cap = 3)) }
         assertEquals(false, p.tickLoop(cap = 3))       // 第 4 圈超過上限
     }
 
     @Test
-    fun loopCapIsPerFactorNotPerRun() {
-        // 實機 2026-10-08：勾 15 個因子，每個約 15 場，舊版整次共用 200 圈 → 第 14 個途中被誤停。
+    fun loopCapResetsOnEveryWin() {
+        // 實機 2026-10-10：同一因子內打了幾十關，勝利點繼續後被防呆誤停。每贏一關就歸零 → 打再久都不會停。
         val p = SweepProgress(plan())
-        repeat(15) {                                   // 15 個因子
-            repeat(16) { assertEquals(true, p.tickLoop(cap = 200)) }
+        repeat(300) {                                  // 300 關，每關用 4 圈（含點繼續、校正等）
+            repeat(4) { assertEquals(true, p.tickLoop(cap = 5)) }
+            p.onWin()
+            assertEquals(0, p.loopsWithoutProgress)
+        }
+        assertEquals(300, p.battlesDone)
+    }
+
+    @Test
+    fun loopCapIsNotResetByLose() {
+        val p = SweepProgress(plan(maxRetries = 0))   // 不限重試：連敗只能靠防呆停
+        repeat(3) { assertEquals(true, p.tickLoop(cap = 3)); p.onLose() }
+        assertEquals(false, p.tickLoop(cap = 3))
+    }
+
+    @Test
+    fun loopCapResetsOnFactorSwitch() {
+        // 實機 2026-10-08：勾 15 個因子，舊版整次共用 200 圈 → 第 14 個途中被誤停。
+        val p = SweepProgress(plan())
+        repeat(15) {                                   // 15 個因子，每個空轉到差 1 圈就到上限
+            repeat(199) { assertEquals(true, p.tickLoop(cap = 200)) }
             p.onFactorSwitch()
         }
-        assertEquals(0, p.loopsThisFactor)
+        assertEquals(0, p.loopsWithoutProgress)
         repeat(200) { assertEquals(true, p.tickLoop(cap = 200)) }   // 新因子仍有完整 200 圈
         assertEquals(false, p.tickLoop(cap = 200))
     }

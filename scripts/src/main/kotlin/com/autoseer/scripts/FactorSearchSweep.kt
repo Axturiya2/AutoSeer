@@ -50,6 +50,8 @@ class FactorSearchSweep(
         return goTo(t, backFirst = true)
     }
 
+    override val allDone: Boolean get() = progress.current() == null
+
     private enum class SearchOutcome { ENTERED, NOT_ENTERED, NO_SEARCH_BOX }
 
     /**

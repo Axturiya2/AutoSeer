@@ -242,7 +242,7 @@ class AutoSeerService : Service() {
             advanceMap = script.advanceMap,
             defaultSlot = RunPrefs.defaultSlot(this),
             startStage = 1,  // 起始關卡改為固定 1（動態辨識「關卡 N」校正相位，不再讀 RunPrefs）
-            maxRetriesPerStage = script.maxRetries,
+            maxRetriesPerStage = RunPrefs.maxRetriesPerStage(this),  // 全域設定，不再讀腳本自帶值
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         return parsed.plan

@@ -9,7 +9,7 @@ import com.autoseer.core.RunPrefs
 import com.autoseer.databinding.ActivitySettingsBinding
 
 /**
- * 更多設定: global execution options ([RunPrefs] — 循環輪數／預設技能格／戰前恢復)
+ * 更多設定: global execution options ([RunPrefs] — 起始關卡／預設技能格／戰前恢復／每關重試上限)
  * plus a link into the global delay settings ([DelaySettingsActivity]).
  */
 class SettingsActivity : AppCompatActivity() {
@@ -34,6 +34,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.editDefaultSlot.setText(RunPrefs.defaultSlot(this).toString())
         binding.healSwitch.isChecked = RunPrefs.healBeforeBattle(this)
         binding.lobbyOnExhaustSwitch.isChecked = RunPrefs.backToLobbyOnRetryExhausted(this)
+        binding.editMaxRetries.setText(RunPrefs.maxRetriesPerStage(this).toString())
     }
 
     private fun save() {
@@ -43,6 +44,8 @@ class SettingsActivity : AppCompatActivity() {
             defaultSlot = binding.editDefaultSlot.text.toString().toIntOrNull() ?: 2,
             healBeforeBattle = binding.healSwitch.isChecked,
             backToLobbyOnRetryExhausted = binding.lobbyOnExhaustSwitch.isChecked,
+            maxRetriesPerStage = binding.editMaxRetries.text.toString().toIntOrNull()
+                ?: RunPrefs.maxRetriesPerStage(this),
         )
         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
     }

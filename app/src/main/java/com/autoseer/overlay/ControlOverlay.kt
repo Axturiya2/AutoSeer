@@ -398,6 +398,7 @@ class ControlOverlay(
             defaultSlot = RunPrefs.defaultSlot(context),
             healBeforeBattle = RunPrefs.healBeforeBattle(context),
             backToLobbyOnRetryExhausted = RunPrefs.backToLobbyOnRetryExhausted(context),
+            maxRetriesPerStage = RunPrefs.maxRetriesPerStage(context),
         )
         stageValue.text = v.toString()
     }

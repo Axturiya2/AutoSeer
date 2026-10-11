@@ -21,16 +21,18 @@ class SweepProgress(
     var retriesThisStage = 0
         private set
 
-    /** Main-loop passes spent on the current factor (reset on [onFactorSwitch]). */
-    var loopsThisFactor = 0
+    /** Main-loop passes since the last progress (reset on [onWin] and [onFactorSwitch]). */
+    var loopsWithoutProgress = 0
         private set
 
     /**
-     * 主迴圈每跑一圈呼叫一次；回傳 false＝這個因子已跑滿 [cap] 圈（防呆停止）。
-     * 上限算「每個因子」而非整次執行：舊版整次共用一個總上限，一個因子每天約 15 場，
-     * 勾 15 個因子會在第 13～14 個途中被誤停（實機 2026-10-08）。
+     * 主迴圈每跑一圈呼叫一次；回傳 false＝已連續 [cap] 圈沒有進展（防呆停止）。
+     * 只算「連續沒進展」：每打贏一關、每換一個因子就歸零，所以正常掃蕩不論勾幾個因子、
+     * 打幾關都不會被它停下，只有原地空轉才會。舊版算整次／每個因子的總圈數，長時間掃蕩
+     * 會在勝利點繼續後被誤停（實機 2026-10-08 第 14 個因子途中、2026-10-10 共清 43 關時）。
+     * 失敗不算進展：連敗由 [onLose] 的每關重試上限處理。
      */
-    fun tickLoop(cap: Int): Boolean = ++loopsThisFactor <= cap
+    fun tickLoop(cap: Int): Boolean = ++loopsWithoutProgress <= cap
 
     /**
      * [battlesDone] value at which the current factor started, so the per-stage
@@ -55,7 +57,7 @@ class SweepProgress(
 
     /**
      * Moving on to a new factor: restart the per-stage plan cursor from this
-     * factor's first stage, and clear per-stage retries and the per-factor loop
+     * factor's first stage, and clear per-stage retries and the no-progress loop
      * count ([tickLoop]). [battlesDone] (the run total shown in the UI) is
      * intentionally kept.
      *
@@ -66,13 +68,14 @@ class SweepProgress(
         if (newPlan != null) plan = newPlan
         factorStageBaseline = battlesDone
         retriesThisStage = 0
-        loopsThisFactor = 0
+        loopsWithoutProgress = 0
     }
 
-    /** Won the current stage: advance to the next, reset per-stage retries. */
+    /** Won the current stage: advance to the next, reset per-stage retries and the no-progress count. */
     fun onWin() {
         battlesDone++
         retriesThisStage = 0
+        loopsWithoutProgress = 0
     }
 
     /**

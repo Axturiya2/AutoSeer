@@ -42,7 +42,7 @@
     <string name="opt_max">清關場數上限</string>
     <string name="opt_start">起始關卡（中途續跑用，第1關填1）</string>
     <string name="opt_loops">循環輪數（固定關卡數用，如精靈因子填3；1＝跑一輪）</string>
-    <string name="opt_retries">每關撤退重試上限（0＝無限）</string>
+    <string name="opt_retries">每關失敗／撤退重試上限（0＝無限）</string>
     <string name="opt_default_slot">預設技能格 (1–5)</string>
     <string name="opt_heal">戰前按「精靈恢復」</string>
     <string name="opt_lobby_on_exhaust">失敗達重試上限後回到大廳（關閉＝待在原地）</string>
