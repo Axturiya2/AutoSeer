@@ -18,6 +18,7 @@ class BattleTurnRunner(
     enum class Result { WIN, LOSE, PLAN_EXHAUSTED, STUCK }
 
     private var stepIndex = 0
+    private lateinit var guard: SkillGuard
 
     /**
      * Fight the current battle. [steps] empty = spam [defaultCode] every turn.
@@ -29,6 +30,7 @@ class BattleTurnRunner(
      */
     fun fight(steps: List<Step>, defaultCode: Int, label: String = ""): Result {
         stepIndex = 0
+        guard = SkillGuard(defaultCode)   // 每場開打前已精靈恢復，PP 回滿
         var unknown = 0
         api.logger.i("開始戰鬥$label")
         while (true) {
@@ -78,26 +80,58 @@ class BattleTurnRunner(
         return Result.LOSE
     }
 
-    /** Returns false when the plan is exhausted before 勝利 (failure). */
+    /** Returns false when the plan is exhausted before 勝利, or no skill fires (→ retreat). */
     private fun onYourTurn(steps: List<Step>, defaultCode: Int): Boolean {
         when {
-            steps.isEmpty() -> cast(defaultCode)
+            steps.isEmpty() -> if (!castChecked(defaultCode)) return false
             stepIndex >= steps.size -> return false
             else -> {
                 val step = steps[stepIndex]
                 if (step.isSwitch) {
                     deployPet(step.petIndex, alreadyOpen = false)   // 主動切換 (4-1)
                     stepIndex++
+                    turnUsed(TURN_SETTLE_MS)
                 } else {
-                    cast(step.code)
+                    if (!castChecked(step.code)) return false
                     if (!step.untilDefeat) stepIndex++   // *N stays; advances on 已戰敗
                 }
             }
         }
-        api.waitUntil(TURN_SETTLE_MS, pollMs = 400) {
-            !exists(SeerTemplates.BATTLE_ACTION) || exists(SeerTemplates.PET_DEFEATED)
-        }
         return true
+    }
+
+    /**
+     * Cast [wanted] and confirm it actually used the turn. A skill that won't fire
+     * (PP 用盡、被封印… — the tap is ignored and 「你的回合」 stays up) used to be
+     * re-tapped forever on `*N` (the pet never dies, so the step never advances),
+     * or silently skipped on a plain step, drifting the script off its turns. Now a
+     * slot that fails [FIRE_ATTEMPTS] taps in a row is blocked for the pet on the
+     * field and [SkillGuard] picks a substitute; the step still counts as this
+     * turn's action. False = every skill slot is blocked (→ PLAN_EXHAUSTED → retreat).
+     * Non-skill codes (戰鬥/道具/精靈/撤退) keep the old tap-and-settle.
+     */
+    private fun castChecked(wanted: Int): Boolean {
+        if (!SkillGuard.isSkill(wanted)) {
+            cast(wanted); turnUsed(TURN_SETTLE_MS); return true
+        }
+        while (true) {
+            val code = guard.pick(wanted) ?: run {
+                api.logger.w("技能 ${guard.blockedCodes.joinToString("、")} 都放不出 → 撤退重打")
+                return false
+            }
+            if (code != wanted) api.logger.i("技能$wanted 放不出 → 改放技能$code")
+            repeat(FIRE_ATTEMPTS) {
+                cast(code)
+                if (turnUsed(SKILL_FIRE_MS)) return true
+            }
+            api.logger.w("技能$code 連點 $FIRE_ATTEMPTS 次沒放出（PP 用盡／被封印？）→ 這隻精靈不再用它")
+            guard.block(code)
+        }
+    }
+
+    /** Wait for our command to take: 「你的回合」 leaves (or a pet is down). False = still our turn. */
+    private fun turnUsed(timeoutMs: Long): Boolean = api.waitUntil(timeoutMs, pollMs = 400) {
+        !exists(SeerTemplates.BATTLE_ACTION) || exists(SeerTemplates.PET_DEFEATED)
     }
 
     /**
@@ -160,7 +194,10 @@ class BattleTurnRunner(
                 api.click(slot); api.sleep(300)
                 api.swipe(slot, Location(slot.x, slot.y - SeerLayout.PET_DEPLOY_UP_PX), 450)
                 api.sleep(delays.afterSwitch); api.refreshScreen()
-                if (verifyDeployed(activeSwitch = !alreadyOpen)) return true
+                if (verifyDeployed(activeSwitch = !alreadyOpen)) {
+                    guard.reset()   // 新精靈上場：PP／封印是前一隻的
+                    return true
+                }
                 api.logger.w("換精靈未通過驗證")
             }
         }
@@ -211,6 +248,9 @@ class BattleTurnRunner(
     companion object {
         private const val STUCK_LIMIT = 80
         private const val TURN_SETTLE_MS = 12_000L
+        // 放技能後等「你的回合」消失的時間；逾時＝沒放出（PP 用盡／被封印），重點一次仍不行就換技能
+        private const val SKILL_FIRE_MS = 6_000L
+        private const val FIRE_ATTEMPTS = 2
         private const val OUTCOME_POLLS = 12       // 讀勝負鑽石的輪數（結算畫面靜態，可安心多讀）
         private const val OUTCOME_POLL_MS = 400L   // ≈ 4.8s 內幾乎必讀到；讀不到才落保守失敗
         private const val SWITCH_ATTEMPTS = 3 // 換人「點卡→驗證」重試次數（同一目標）
