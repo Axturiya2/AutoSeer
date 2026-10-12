@@ -8,15 +8,20 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 ROOT=$PWD
 mkdir -p .dev
 
-# 本機覆寫（不進版控）：AUTOSEER_JAVA_HOME / ANDROID_HOME / AUTOSEER_SERIAL
+# 本機覆寫（不進版控）：AUTOSEER_JAVA_HOME / ANDROID_HOME / AUTOSEER_TMP / AUTOSEER_SERIAL
 [ -f .dev/env ] && . .dev/env
 
-# 刻意不吃環境裡的 JAVA_HOME：Android Studio 內建 JBR 已是 Java 25，Gradle 8.10 不支援
-export JAVA_HOME="${AUTOSEER_JAVA_HOME:-/c/Users/Administrator/.jdks/jbr-21.0.11}"
-# JBR 的 AF_UNIX pipe 遇到 8.3 短檔名會 EINVAL，必須指到短 ASCII 路徑
-mkdir -p /d/BY/tmp
-export JAVA_TOOL_OPTIONS="-Djdk.net.unixdomain.tmpdir=D:/BY/tmp"
-export ANDROID_HOME="${ANDROID_HOME:-C:/Users/Administrator/AppData/Local/Android/Sdk}"
+# 刻意不吃環境裡的 JAVA_HOME：Android Studio 內建 JBR 已是 Java 25，Gradle 8.10 不支援。
+# 沒覆寫就找 ~/.jdks 底下的 JDK 21（Android Studio「Download JDK」的安裝位置）
+if [ -z "${AUTOSEER_JAVA_HOME:-}" ]; then
+  for d in "$HOME"/.jdks/*-21.*; do [ -f "$d/bin/java.exe" ] && AUTOSEER_JAVA_HOME=$d; done
+fi
+export JAVA_HOME="${AUTOSEER_JAVA_HOME:-$HOME/.jdks/jbr-21.0.11}"
+# JBR 的 AF_UNIX pipe 遇到 8.3 短檔名會 EINVAL，必須指到短 ASCII 路徑（專案路徑本來就要求純 ASCII）
+AUTOSEER_TMP="${AUTOSEER_TMP:-$(cygpath -m "$ROOT")/.dev/tmp}"
+mkdir -p "$AUTOSEER_TMP"
+export JAVA_TOOL_OPTIONS="-Djdk.net.unixdomain.tmpdir=$AUTOSEER_TMP"
+export ANDROID_HOME="${ANDROID_HOME:-$(cygpath -m "${LOCALAPPDATA:-$USERPROFILE/AppData/Local}")/Android/Sdk}"
 export MSYS_NO_PATHCONV=1   # 防止 Git Bash 改寫傳給 adb 的 /xxx 參數
 ADB="$ANDROID_HOME/platform-tools/adb.exe"
 APK=app/build/outputs/apk/debug/app-debug.apk
@@ -145,6 +150,10 @@ cmd_setup() {   # 新機器或換環境時跑一次，順便當環境自檢
   case "$ROOT" in *[!\ -~]*) echo "✗ 專案路徑含非 ASCII 字元，單元測試會 ClassNotFoundException" ;; *) echo "✓ 專案路徑為純 ASCII" ;; esac
 }
 
+cmd_stop() {   # 搬移、壓縮或刪除專案檔前先跑：Gradle／Kotlin daemon 會鎖住 build 與 .gradle 底下的檔案
+  ./gradlew --stop -q && echo "✓ Gradle daemon 已停止"
+}
+
 usage() {
   cat <<'EOF'
 tools/dev.sh [-s <adb序號>] <命令>
@@ -156,13 +165,15 @@ tools/dev.sh [-s <adb序號>] <命令>
   grant                                        只重新授權無障礙＋懸浮窗
   log [N|-c]                                   AutoSeer tag＋崩潰的最後 N 行（預設 60）／清除
   shot [名稱]                                  截圖存 .dev/shots/
-  devices | status | setup
+  setup                                        新機器自檢（JDK／adb／SDK／路徑）並設定 git hooks
+  stop                                         停掉 Gradle daemon（搬移／壓縮專案前）
+  devices | status
 EOF
 }
 
 if [ "${1:-}" = "-s" ]; then AUTOSEER_SERIAL=${2:-}; shift 2; fi
 cmd=${1:-help}; [ $# -gt 0 ] && shift
 case "$cmd" in
-  test|build|check|lint|devices|grant|install|log|shot|status|setup) "cmd_$cmd" "$@" ;;
+  test|build|check|lint|devices|grant|install|log|shot|status|setup|stop) "cmd_$cmd" "$@" ;;
   *) usage ;;
 esac

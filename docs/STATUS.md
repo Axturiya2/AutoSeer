@@ -3,13 +3,13 @@
 用來比對「有沒有退步」的快照。大改（升級依賴、動建置設定、修 Lint）後跑一次
 `tools/dev.sh check` 與 `tools/dev.sh lint`，有變就更新本表。待辦與 BUG 細節在 `回饋與待辦.md`。
 
-最後更新：2026-10-10（BUG-5 第二版、設定頁加每關重試上限）
+最後更新：2026-10-12（換電腦前：dev.sh 路徑改成自動推、AF_UNIX 暫存改放 `.dev/tmp`）
 
 ## 驗證結果
 
 | 項目 | 結果 | 指令 |
 |------|------|------|
-| 單測 | ✅ 52 個，失敗 0、錯誤 0（強制重跑約 12s） | `tools/dev.sh test` |
+| 單測 | ✅ 60 個，失敗 0、錯誤 0（強制重跑約 12s） | `tools/dev.sh test` |
 | 建置 | ✅ `app-debug.apk` 46.6 MB，無 Kotlin 編譯警告 | `tools/dev.sh build` |
 | Lint | ✅ 0 error／123 warning（見下） | `tools/dev.sh lint` |
 | 實機啟動 | ✅ 2026-10-06 使用者實機：擷取卡存檔＋精靈編號搜尋導航正常 | `tools/dev.sh install` → `log` |

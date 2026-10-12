@@ -16,8 +16,12 @@ tools/dev.sh build [--rerun-tasks]                         # 只建 APK；加參
 tools/dev.sh lint                                          # Android Lint，~35s，CI 沒跑；改 app 後跑
 tools/dev.sh install                                       # 建置→裝機→自動重新授權無障礙
 tools/dev.sh log [N]                                       # AutoSeer tag＋崩潰的最後 N 行
-tools/dev.sh shot / devices / status / setup
+tools/dev.sh setup                                         # 新機器／換環境先跑：自檢 JDK、adb、SDK、路徑
+tools/dev.sh stop                                          # 搬移／壓縮／刪專案檔前先停 Gradle daemon（會鎖檔）
+tools/dev.sh shot / devices / status
 ```
+- 換電腦：路徑預設會自動推（`~/.jdks/*-21.*`、`%LOCALAPPDATA%\Android\Sdk`），對不上就在 `.dev/env` 設 `AUTOSEER_JAVA_HOME` / `ANDROID_HOME` / `AUTOSEER_TMP`。JDK 要 21（不能用 Android Studio 內建的 25），SDK 要 platform android-35。
+- 使用者習慣自己把 `app/build/outputs/apk/debug/app-debug.apk` 手動裝進 MuMu、手動開權限：改完 app 跑 `check` 後告知 APK 已更新即可，不要叫使用者跑 `install`；需要讀 logcat 時才請使用者連上 adb。
 - 成功只印 1～3 行；失敗只印錯誤行，完整 log 在 `.dev/last-gradle.log`（用 Grep 查，別整份 Read）。
 - Bash 工具要加 `dangerouslyDisableSandbox: true`（沙箱擋 AF_UNIX，Gradle 會失敗）。
 - 多台 adb 裝置時用 `-s <序號>`；`adb install -r` 會撤銷無障礙授權，所以裝機請用 `install` 不要手動 adb。
