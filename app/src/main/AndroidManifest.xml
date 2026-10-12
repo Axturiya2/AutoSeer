@@ -24,7 +24,43 @@
         </activity>
 
         <activity
+            android:name=".ui.MissionListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DailyTasksActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.MoreActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.EditorActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.ScriptListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.ScriptEditActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DelaySettingsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.CardCaptureActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.FactorListActivity"
             android:exported="false" />
 
         <service

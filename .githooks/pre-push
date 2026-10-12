@@ -1,0 +1,7 @@
+#!/bin/sh
+# push 前先跑純 JVM 單測：失敗就擋下，避免把壞 commit 推上去白跑 CI。
+# 略過：AUTOSEER_SKIP_HOOK=1 git push ...　（或 git push --no-verify）
+[ -n "${AUTOSEER_SKIP_HOOK:-}" ] && exit 0
+root=$(git rev-parse --show-toplevel) || exit 0
+echo "pre-push：跑單測…"
+exec "$root/tools/dev.sh" test

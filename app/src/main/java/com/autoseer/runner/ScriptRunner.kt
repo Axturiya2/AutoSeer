@@ -40,15 +40,17 @@ class ScriptRunner(
         val script = scriptFactory(api)
         thread = Thread({
             try {
-                logger.i("啟動腳本：${script.name}")
+                // 生命週期訊息只進 Logcat，不進氣泡狀態列——否則「腳本結束」會蓋掉腳本自己真正
+                // 的最後一行(例如結束原因)，讓使用者在氣泡上看不到為何停。
+                android.util.Log.i("AutoSeer", "啟動腳本：${script.name}")
                 script.run()
-                logger.i("腳本結束：${script.name}")
+                android.util.Log.i("AutoSeer", "腳本結束：${script.name}")
             } catch (e: ScriptAbortException) {
-                logger.i("腳本已停止：${script.name}")
+                android.util.Log.i("AutoSeer", "腳本已停止：${script.name}")
             } catch (e: InterruptedException) {
-                logger.i("腳本已停止：${script.name}")
+                android.util.Log.i("AutoSeer", "腳本已停止：${script.name}")
             } catch (e: Throwable) {
-                logger.e("腳本錯誤：${e.message}", e)
+                logger.e("腳本錯誤：${e.message}", e)   // 錯誤仍進氣泡
             } finally {
                 isRunning = false
                 onStateChange(false)

@@ -76,13 +76,25 @@ adb shell cmd appops set com.autoseer SYSTEM_ALERT_WINDOW allow
 
 ### 下一步：製作辨識樣板
 
-`BattleScript`/`DailyFarmScript` 已寫好骨架，但需要實際樣板圖片才能辨識畫面。做法：
+`BattleScript`/`DailyFarmScript` 已寫好骨架，但需要實際樣板圖片才能辨識畫面。
 
+**方法 A（推薦，免電腦免重編）— App 內擷取：**
+1. 授權並啟動後，在懸浮控制列按 **「存畫面」**：會把 matcher 實際看到的**正規化畫面**
+   （已等比縮到高 720）存到 `Android/data/com.autoseer/files/captures/`。
+2. 從該圖裁下按鈕/標誌等小區塊，存成 `Android/data/com.autoseer/files/templates/<id>.png`
+   （id 見下表）。裝置端樣板會**覆蓋**內建 assets，改樣板不必重編 APK。
+3. 回到遊戲對應畫面，按 **「測試偵測」**：會在狀態列/Logcat 列出每個樣板的 `score` 與是否
+   達門檻（0.8）。分數夠高即代表辨識成立，可放心讓 `BattleScript` 執行。
+
+**方法 B — 用 adb（電腦端）：**
 ```bash
 adb exec-out screencap -p > screen.png     # 在賽爾號各畫面各截一張
 ```
+依「縮到高 720、等比」裁下小區塊，放到 `app/src/main/assets/images/<id>.png` 一起打包。
 
-依「縮到高 720、等比」裁下按鈕/標誌等小區塊，存到 `app/src/main/assets/images/<id>.png`
-（id 對應 `scripts` 的 `TemplateIds` 與 `GameState.templateId`），再把 `AutoSeerService.startScript()`
-從 `TestPipelineScript` 換成 `BattleScript`/`DailyFarmScript`。
-# AutoSeer
+樣板 id（`SeerTemplates`）：`state/battle_action`（你的回合）、`state/result_win`（勝利）、
+`stage/enter_battle`（進入戰鬥）、`stage/wait_challenge`（等待挑戰節點）、
+`state/pet_defeated`（已戰敗）、`state/out_of_stamina`（挑戰次數不足）。
+
+> 現階段服務執行的是 `BattleScript`（讀「使用中」腳本）；`ProbeScript` 為偵測除錯用，
+> 由懸浮列「測試偵測」觸發，不會點擊畫面。

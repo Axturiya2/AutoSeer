@@ -30,6 +30,7 @@ object BattlePlanParser {
         defaultSlot: Int = 2,
         maxRetriesPerStage: Int = 5,
         startStage: Int = 1,
+        loops: Int = 1,
     ): Result {
         val warnings = mutableListOf<String>()
         val clean = commentRe.replace(text, " ")
@@ -52,6 +53,7 @@ object BattlePlanParser {
             defaultCode = defaultSlot.coerceIn(1, SeerLayout.SKILL_COUNT),
             maxRetriesPerStage = maxRetriesPerStage,
             startStage = startStage.coerceAtLeast(1),
+            loops = loops.coerceAtLeast(1),
         )
         return Result(plan, warnings)
     }
@@ -83,6 +85,24 @@ object BattlePlanParser {
     /** Load a plan string into the editor model (codes only; drops any `*N`). */
     fun toStages(text: String): List<List<Int>> =
         parse(text).plan.stages.map { stage -> stage.steps.map { it.code } }
+
+    /**
+     * Serialize a step-aware editor model back into the plan string, preserving
+     * the `*N` (untilDefeat) marker. Prefer this over [serialize] so casts marked
+     * 狂點至陣亡 survive an edit-and-save round trip.
+     */
+    fun serializeSteps(stages: List<List<Step>>): String =
+        stages.joinToString(" ; ") { steps -> steps.joinToString(", ") { tokenOfStep(it) } }
+
+    private fun tokenOfStep(step: Step): String = when {
+        step.isSwitch -> "Switch ${step.petIndex}"
+        step.untilDefeat -> "${step.code}*N"
+        else -> step.code.toString()
+    }
+
+    /** Load a plan string into the step-aware editor model, keeping `*N` markers. */
+    fun toStepStages(text: String): List<List<Step>> =
+        parse(text).plan.stages.map { stage -> stage.steps }
 
     /** Short human-readable summary for the overlay/logs. */
     fun describe(plan: BattlePlan): String {

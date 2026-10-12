@@ -13,6 +13,12 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // 只打包真機需要的 ABI，移除模擬器專用的 x86／x86_64，
+        // 大幅縮小 APK（OpenCV 原生 .so 是主要肇因）、加快下載。
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {

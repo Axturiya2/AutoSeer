@@ -33,7 +33,55 @@
                 android:textColor="@color/text_secondary"
                 android:paddingBottom="12dp" />
 
-            <!-- 權限 -->
+            <!-- 功能入口 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardBackgroundColor="@color/card"
+                app:cardCornerRadius="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMissions"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/home_missions" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSettings"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/home_settings" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMore"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/home_factor_order" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDebug"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/home_more_debug" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 授權 -->
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.Material3.CardView.Filled"
                 android:layout_width="match_parent"
@@ -85,222 +133,21 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="@string/btn_grant_overlay" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- 技能計畫 -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Material3.CardView.Filled"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card"
-                app:cardCornerRadius="14dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
 
                     <TextView
+                        android:id="@+id/statusPetFolder"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/plan_title"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/plan_desc"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:paddingTop="6dp" />
-
-                    <EditText
-                        android:id="@+id/planInput"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minLines="2"
-                        android:gravity="top|start"
-                        android:inputType="textMultiLine"
-                        android:textColor="@color/white"
-                        android:textColorHint="@color/text_secondary"
-                        android:hint="@string/plan_hint"
-                        android:background="@android:color/transparent"
-                        android:paddingTop="8dp" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/plan_example"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11sp"
-                        android:paddingTop="6dp" />
+                        android:paddingTop="8dp"
+                        android:text="@string/status_pet_folder_none" />
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnEditor"
-                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:id="@+id/btnPetFolder"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:text="@string/editor_open" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/preset_title"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:paddingTop="10dp" />
-
-                    <LinearLayout
-                        android:id="@+id/presetContainer"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- 選項 -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Material3.CardView.Filled"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card"
-                app:cardCornerRadius="14dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/opt_title"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:paddingBottom="4dp" />
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingTop="8dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/opt_max"
-                            android:textColor="@color/white" />
-
-                        <EditText
-                            android:id="@+id/editMaxBattles"
-                            android:layout_width="80dp"
-                            android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:gravity="end"
-                            android:textColor="@color/white"
-                            android:text="30" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingTop="8dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/opt_start"
-                            android:textColor="@color/white" />
-
-                        <EditText
-                            android:id="@+id/editStartStage"
-                            android:layout_width="80dp"
-                            android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:gravity="end"
-                            android:textColor="@color/white"
-                            android:text="1" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingTop="8dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/opt_retries"
-                            android:textColor="@color/white" />
-
-                        <EditText
-                            android:id="@+id/editMaxRetries"
-                            android:layout_width="80dp"
-                            android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:gravity="end"
-                            android:textColor="@color/white"
-                            android:text="5" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:paddingTop="8dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:text="@string/opt_default_slot"
-                            android:textColor="@color/white" />
-
-                        <EditText
-                            android:id="@+id/editDefaultSlot"
-                            android:layout_width="80dp"
-                            android:layout_height="wrap_content"
-                            android:inputType="number"
-                            android:gravity="end"
-                            android:textColor="@color/white"
-                            android:text="2" />
-                    </LinearLayout>
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/healSwitch"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/opt_heal"
-                        android:textColor="@color/white"
-                        android:checked="true"
-                        android:paddingTop="8dp" />
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/advanceSwitch"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/opt_advance"
-                        android:textColor="@color/white"
-                        android:checked="true"
-                        android:paddingTop="8dp" />
+                        android:text="@string/btn_pet_folder" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -322,15 +169,6 @@
         android:orientation="horizontal"
         android:background="@color/card"
         android:padding="10dp">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSave"
-            style="@style/Widget.Material3.Button.TonalButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="6dp"
-            android:text="@string/btn_save" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnStop"

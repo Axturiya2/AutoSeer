@@ -70,6 +70,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:text="@string/editor_to_pet" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switchUntil"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textColor="@color/white"
+            android:text="@string/editor_until_defeat" />
     </LinearLayout>
 
     <!-- 中間：模擬戰鬥畫面 + 可點技能格 -->
