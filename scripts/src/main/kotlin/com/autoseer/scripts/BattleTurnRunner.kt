@@ -18,6 +18,7 @@ class BattleTurnRunner(
     enum class Result { WIN, LOSE, PLAN_EXHAUSTED, STUCK }
 
     private var stepIndex = 0
+    private var keepFighting = false
     private lateinit var guard: SkillGuard
     private val roster = PetRoster()
 
@@ -28,11 +29,24 @@ class BattleTurnRunner(
      * what distinguishes them — miscropping RESULT_WIN as the continue text was
      * why losses were once counted as wins). PLAN_EXHAUSTED if the tactics run
      * out before the battle ends; STUCK if nothing recognizable happens.
+     *
+     * 一般戰鬥 (FR-11): [midBattle] = taking over a battle already in progress (who is
+     * on the field is unknown); [keepFighting] = when the steps run out, keep casting
+     * [defaultCode] and 補位 instead of PLAN_EXHAUSTED (there is no retreat there), so
+     * PLAN_EXHAUSTED then only means every skill is blocked or no pet can deploy.
      */
-    fun fight(steps: List<Step>, defaultCode: Int, label: String = ""): Result {
+    fun fight(
+        steps: List<Step>,
+        defaultCode: Int,
+        label: String = "",
+        midBattle: Boolean = false,
+        keepFighting: Boolean = false,
+    ): Result {
         stepIndex = 0
+        this.keepFighting = keepFighting
         guard = SkillGuard(defaultCode)   // 每場開打前已精靈恢復，PP 回滿
-        roster.reset()                    // 同上：全員復活、精靈1 先上
+        // 同上：全員復活、精靈1 先上；中途接手就不知道誰在場
+        if (midBattle) roster.resetMidBattle() else roster.reset()
         var unknown = 0
         api.logger.i("開始戰鬥$label")
         while (true) {
@@ -86,7 +100,7 @@ class BattleTurnRunner(
     private fun onYourTurn(steps: List<Step>, defaultCode: Int): Boolean {
         when {
             steps.isEmpty() -> if (!castChecked(defaultCode)) return false
-            stepIndex >= steps.size -> return false
+            stepIndex >= steps.size -> if (!keepFighting || !castChecked(defaultCode)) return false
             else -> {
                 val step = steps[stepIndex]
                 if (step.isSwitch) {
@@ -155,7 +169,7 @@ class BattleTurnRunner(
     private fun onPetDefeated(steps: List<Step>): Boolean {
         roster.activeDefeated()
         readDefeatedCards()
-        val d = DeployDecision.decide(steps, stepIndex)
+        val d = DeployDecision.decide(steps, stepIndex, keepFighting)
         stepIndex = d.nextStepIndex
         // deployPet returns whether a pet actually took the field. Propagate it:
         // failing to deploy (recognition fails, or the whole team is down) returns

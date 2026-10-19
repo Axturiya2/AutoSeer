@@ -20,6 +20,7 @@ import com.autoseer.core.RunPrefs
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
 import com.autoseer.core.DelayPrefs
+import com.autoseer.scripts.RunMode
 
 /**
  * FGA-style floating control. Collapsed it is a small draggable dot ("AS") with a
@@ -52,6 +53,10 @@ class ControlOverlay(
     private lateinit var scriptPopup: LinearLayout  // floating card over the panel
     private lateinit var delayPanel: LinearLayout   // delay rows (content of delayPopup)
     private lateinit var delayPopup: LinearLayout    // floating card over the panel
+    private lateinit var modeButton: Button     // 功能選單（精靈因子／每日／一般戰鬥）
+    private lateinit var modeList: LinearLayout
+    private lateinit var modePopup: LinearLayout
+    private lateinit var navTestBtn: Button     // 只在精靈因子模式顯示
     private lateinit var stageValue: TextView   // 起始關卡 value
     private lateinit var runButton: Button
 
@@ -93,6 +98,7 @@ class ControlOverlay(
         // 獨立浮動子頁：疊在主面板上、可上下滑；顯示時主面板尺寸不變。
         scriptPopup = makePopupCard("選擇腳本", scriptList)
         delayPopup = makePopupCard("延遲設定（全域）", delayPanel)
+        modePopup = makePopupCard("選擇功能", modeList)
         val popupLp = {
             FrameLayout.LayoutParams(dp(250), FrameLayout.LayoutParams.WRAP_CONTENT).apply {
                 gravity = Gravity.TOP or Gravity.START; leftMargin = dp(6); topMargin = dp(70)
@@ -100,6 +106,7 @@ class ControlOverlay(
         }
         container.addView(scriptPopup, popupLp())
         container.addView(delayPopup, popupLp())
+        container.addView(modePopup, popupLp())
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -183,6 +190,8 @@ class ControlOverlay(
             setOnClickListener { toggleScriptList() }
         }
         scriptList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        modeButton = makeBtn("功能：--", cField).apply { setOnClickListener { toggleModeList() } }
+        modeList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         // 起始關卡 stepper
         val stageRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val stageLabel = TextView(context).apply { text = "起始關卡"; setTextColor(cSub); textSize = 12f }
@@ -218,7 +227,7 @@ class ControlOverlay(
         tools.addView(cards, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3) })
 
         // 純導航測試（不打戰鬥）：測「進入→退出→下一個因子＋捲動尋找」的銜接流程。
-        val navTestBtn = makeBtn("測因子導航（不打戰鬥）", cField).apply {
+        navTestBtn = makeBtn("測因子導航（不打戰鬥）", cField).apply {
             textSize = 12f; setOnClickListener { onNavTest() }
         }
 
@@ -227,7 +236,7 @@ class ControlOverlay(
             p.addView(v, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT).apply { this.topMargin = topMargin })
         p.addView(header, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT))
         add(statusText); add(progressText)
-        add(scriptButton)
+        add(modeButton); add(scriptButton)
         // 起始關卡 stepper 已休眠（v9+：改以動態辨識「關卡 N」為準，不再由使用者預設）。
         // stageRow 及 bumpStage() 程式碼保留但不加進面板。
         add(delayBtn)
@@ -283,11 +292,12 @@ class ControlOverlay(
     private fun setExpanded(expanded: Boolean) {
         if (root == null) return
         if (expanded) {
-            refreshScriptButton()
+            refreshModeButton()   // 也會刷新腳本鈕
             // 起始關卡 stepper 已休眠，不再刷新 stageValue。
         }
         scriptPopup.visibility = View.GONE
         delayPopup.visibility = View.GONE
+        modePopup.visibility = View.GONE
         collapsed.visibility = if (expanded) View.GONE else View.VISIBLE
         panel.visibility = if (expanded) View.VISIBLE else View.GONE
     }
@@ -296,6 +306,7 @@ class ControlOverlay(
     private fun toggleScriptList() {
         if (scriptPopup.visibility == View.VISIBLE) { scriptPopup.visibility = View.GONE; return }
         delayPopup.visibility = View.GONE
+        modePopup.visibility = View.GONE
         populateScriptList()
         scriptPopup.visibility = View.VISIBLE
     }
@@ -341,6 +352,7 @@ class ControlOverlay(
     private fun toggleDelayPanel() {
         if (delayPopup.visibility == View.VISIBLE) { delayPopup.visibility = View.GONE; return }
         scriptPopup.visibility = View.GONE
+        modePopup.visibility = View.GONE
         populateDelayPanel()
         delayPopup.visibility = View.VISIBLE
     }
@@ -387,7 +399,50 @@ class ControlOverlay(
         val sel = ScriptStore.selectedId(context)
         val name = list.firstOrNull { it.id == sel }?.displayName
             ?: list.firstOrNull()?.displayName ?: "（無，請先新增）"
-        scriptButton.text = "腳本：$name（點擊切換）"
+        val hint = if (RunPrefs.mode(context) == RunMode.BATTLE) "用第1關技能" else "點擊切換"
+        scriptButton.text = "腳本：$name（$hint）"
+    }
+
+    // ---- 功能選單（FR-11）----
+    private fun toggleModeList() {
+        if (modePopup.visibility == View.VISIBLE) { modePopup.visibility = View.GONE; return }
+        if (running) { setStatus("執行中不能切換功能，請先停止"); return }
+        scriptPopup.visibility = View.GONE
+        delayPopup.visibility = View.GONE
+        populateModeList()
+        modePopup.visibility = View.VISIBLE
+    }
+
+    private fun populateModeList() {
+        modeList.removeAllViews()
+        val sel = RunPrefs.mode(context)
+        for (mode in RunMode.entries) {
+            val row = TextView(context).apply {
+                text = (if (mode == sel) "● " else "　") + mode.label + (if (mode.ready) "" else "（尚未開發）")
+                setTextColor(if (mode.ready) cInk else cSub); textSize = 13f
+                setPadding(dp(10), dp(9), dp(10), dp(9))
+                setOnClickListener {
+                    if (!mode.ready) { setStatus("${mode.label}功能尚未開發"); return@setOnClickListener }
+                    RunPrefs.setMode(context, mode)
+                    refreshModeButton()
+                    modePopup.visibility = View.GONE
+                    progressText.text = if (mode == RunMode.BATTLE) "一般戰鬥：已打 0 場" else "目前進度：第 1 關｜已清 0 關"
+                    setStatus(if (mode == RunMode.BATTLE) "已切換：一般戰鬥（按開始後待命，進戰鬥自動接手）" else "已切換：${mode.label}")
+                }
+            }
+            modeList.addView(
+                row,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+            )
+        }
+    }
+
+    /** 依模式刷新功能鈕、腳本鈕文字與導航測試鈕；只在使用者點選（沒在跑）時呼叫，不會在執行中改視窗大小。 */
+    private fun refreshModeButton() {
+        val mode = RunPrefs.mode(context)
+        modeButton.text = "功能：${mode.label} ▾"
+        navTestBtn.visibility = if (mode == RunMode.FACTOR) View.VISIBLE else View.GONE
+        refreshScriptButton()
     }
 
     private fun bumpStage(delta: Int) {
@@ -433,8 +488,10 @@ class ControlOverlay(
         root?.post { root?.alpha = if (visible) 1f else 0f }
     }
 
-    fun setProgress(stageNo: Int, cleared: Int) {
-        progressText.post { progressText.text = "目前進度：第 $stageNo 關｜已清 $cleared 關" }
+    fun setProgress(stageNo: Int, cleared: Int) = setProgressText("目前進度：第 $stageNo 關｜已清 $cleared 關")
+
+    fun setProgressText(text: String) {
+        progressText.post { progressText.text = text }
     }
 
     @SuppressLint("ClickableViewAccessibility")

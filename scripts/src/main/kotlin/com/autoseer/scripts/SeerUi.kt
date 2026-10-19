@@ -173,6 +173,9 @@ object SeerLayout {
     /** 「精靈恢復」按鈕（在關卡畫面，進入戰鬥前必按）。 */
     val HEAL = Location(945, 560)
 
+    /** 每日首次精靈恢復提示的「確認」（量自 PPT）。 */
+    val FIRST_RECOVER_CONFIRM = Location(723, 486)
+
     /**
      * Where to tap to dismiss the 勝利/失敗 result screen. Both say 「點擊任意位置繼續」
      * but only the empty (non-image) area on the right responds; this point sits in

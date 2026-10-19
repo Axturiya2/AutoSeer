@@ -133,7 +133,7 @@ class SeerFactorScript(
             //   用寬字樣樣板（RECOVER_FULL/CANNOT）當閘，只把「點擊」改回固定座標。
             when (first) {
                 SeerTemplates.FIRST_RECOVER_TIP -> {
-                    api.click(FIRST_TIP_CONFIRM)
+                    api.click(SeerLayout.FIRST_RECOVER_CONFIRM)
                     if (m.waitAppearAny(
                             listOf(SeerTemplates.RECOVER_FULL, SeerTemplates.RECOVER_CANNOT),
                             WAIT_UI_MS, RECOVER_POLL_MS,
@@ -323,7 +323,6 @@ class SeerFactorScript(
 
     companion object {
         // 「確認」按鈕固定座標（正規化 1280x720，量自 PPT）。
-        private val FIRST_TIP_CONFIRM = Location(723, 486)   // 每日首次恢復提示 → 確認
         private val DAILY_LIMIT_CONFIRM = Location(640, 486) // 達到每天操作上限 → 確認
 
         /** 結算畫面殘留的字樣（樣板 id → 紀錄用名稱），依原本的判斷順序。 */

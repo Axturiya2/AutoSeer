@@ -36,6 +36,8 @@ import com.autoseer.core.FactorPlanPrefs
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlan
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.BattleWatchScript
+import com.autoseer.scripts.RunMode
 import com.autoseer.scripts.FactorTarget
 import com.autoseer.scripts.FactorSearchNavTestScript
 import com.autoseer.scripts.FactorSearchSweep
@@ -152,6 +154,22 @@ class AutoSeerService : Service() {
         val templates = DeviceTemplates(this)
         ScriptStore.ensureSeeded(this)
         val script = ScriptStore.selected(this)
+        val mode = RunPrefs.mode(this)
+        if (mode == RunMode.BATTLE) {
+            // 一般戰鬥：用所選腳本第 1 關的技能排序；沒腳本就只放預設技能格
+            val plan = script?.let { parseFactorPlan(it) }
+            val steps = plan?.forStage(0)?.steps ?: emptyList()
+            val defaultCode = plan?.defaultCode ?: RunPrefs.defaultSlot(this)
+            val delays = DelayPrefs.toBattleDelays(this)
+            overlay?.setStatus("一般戰鬥：腳本「${script?.displayName ?: "無"}」第 1 關，待命中")
+            overlay?.setProgressText("一般戰鬥：已打 0 場")
+            runner.start { api ->
+                BattleWatchScript(api, templates, steps, defaultCode, delays,
+                    onBattleDone = { n -> overlay?.setProgressText("一般戰鬥：已打 $n 場") })
+            }
+            return
+        }
+        if (!mode.ready) { overlay?.setStatus("${mode.label}功能尚未開發"); return }
         if (script == null) {
             overlay?.setStatus("⚠ 尚未設定任何腳本，請先到「周回腳本」新增")
             Log.w(TAG, "無選取腳本，取消啟動")

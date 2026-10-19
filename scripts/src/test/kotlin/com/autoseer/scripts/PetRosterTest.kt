@@ -87,6 +87,18 @@ class PetRosterTest {
     }
 
     @Test
+    fun midBattleTakeover_fieldUnknown_switchNeverSkipped() {
+        // 一般戰鬥中途接手：不知道誰在場 → Switch 1 照做，不當成「已在場」跳過
+        val r = PetRoster()
+        r.markDefeated(listOf(4))
+        r.resetMidBattle()
+        assertNull(r.active)
+        assertTrue(r.defeatedPets.isEmpty())
+        assertEquals(SwitchCheck.GO, r.checkSwitch(1))
+        assertEquals((1..6).toList(), r.fallbackOrder())
+    }
+
+    @Test
     fun labelXMapsToItsCard() {
         // 頭像中心
         assertEquals(1, SeerLayout.petCardAt(50))

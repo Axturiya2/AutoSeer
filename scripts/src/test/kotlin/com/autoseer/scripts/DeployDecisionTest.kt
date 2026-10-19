@@ -56,6 +56,21 @@ class DeployDecisionTest {
     }
 
     @Test
+    fun keepFighting_planExhausted_fallsBackInsteadOfRetreat() {
+        // 一般戰鬥不撤退：排序用完後陣亡 → 補位，繼續放預設技能
+        val d = DeployDecision.decide(script, script.size, keepFighting = true)
+        assertEquals(DeployDecision.Action.Fallback, d.action)
+        assertEquals(script.size, d.nextStepIndex)
+    }
+
+    @Test
+    fun keepFighting_scriptedSwitchStillFollowed() {
+        val d = DeployDecision.decide(script, 3, keepFighting = true)
+        assertEquals(DeployDecision.Action.Scripted(3), d.action)
+        assertEquals(4, d.nextStepIndex)
+    }
+
+    @Test
     fun emptyPlan_fallsBack() {
         // 沒有各關計畫（spam 預設技能）→ 陣亡補位走 fallback、不推進
         val d = DeployDecision.decide(emptyList(), 0)

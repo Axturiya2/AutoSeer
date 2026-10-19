@@ -34,13 +34,15 @@ object DeployDecision {
      * @param stepIndex the index the runner is *about to* execute. If it points at
      *   an `*N` (untilDefeat) cast, that pet just died fulfilling it, so consume it
      *   (+1) before reading the next step — matching [BattleTurnRunner]'s bookkeeping.
+     * @param keepFighting 一般戰鬥: never give up when the plan runs out — 補位 like
+     *   [Action.Fallback] and fight on the default skill (no retreat there).
      */
-    fun decide(steps: List<Step>, stepIndex: Int): Decision {
+    fun decide(steps: List<Step>, stepIndex: Int, keepFighting: Boolean = false): Decision {
         var idx = stepIndex
         if (steps.getOrNull(idx)?.untilDefeat == true) idx++
         val next = steps.getOrNull(idx)
         return when {
-            next == null && steps.isNotEmpty() -> Decision(Action.PlanExhausted, idx)
+            next == null && steps.isNotEmpty() && !keepFighting -> Decision(Action.PlanExhausted, idx)
             next != null && next.isSwitch -> Decision(Action.Scripted(next.petIndex), idx + 1)
             else -> Decision(Action.Fallback, idx) // next is a cast, or empty plan
         }

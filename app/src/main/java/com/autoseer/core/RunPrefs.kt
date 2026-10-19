@@ -1,6 +1,7 @@
 package com.autoseer.core
 
 import android.content.Context
+import com.autoseer.scripts.RunMode
 
 /**
  * Global execution options (shared by all scripts) per the finalized UI:
@@ -15,9 +16,14 @@ object RunPrefs {
     private const val KEY_HEAL = "heal_before_battle"
     private const val KEY_LOBBY_ON_EXHAUST = "lobby_on_retry_exhausted"
     private const val KEY_MAX_RETRIES = "max_retries_per_stage"
+    private const val KEY_MODE = "run_mode"
 
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    /** 懸浮窗「功能」選單：按開始要跑哪種流程（預設精靈因子＝舊行為）。 */
+    fun mode(ctx: Context): RunMode = RunMode.fromKey(prefs(ctx).getString(KEY_MODE, null))
+    fun setMode(ctx: Context, mode: RunMode) = prefs(ctx).edit().putString(KEY_MODE, mode.key).apply()
 
     /** 1-based stage to start from (中途續跑用；第 1 關填 1). */
     fun startStage(ctx: Context): Int = prefs(ctx).getInt(KEY_START_STAGE, 1)

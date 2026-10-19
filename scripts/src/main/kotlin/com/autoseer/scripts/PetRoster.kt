@@ -29,6 +29,15 @@ class PetRoster(private val count: Int = SeerLayout.PET_COUNT) {
         defeated.clear()
     }
 
+    /**
+     * Taking over a battle already in progress (一般戰鬥): who is on the field is
+     * unknown, so a scripted switch is never skipped as 「已在場」.
+     */
+    fun resetMidBattle() {
+        active = null
+        defeated.clear()
+    }
+
     /** A switch was verified: [pet] is on the field (so it can't be down). */
     fun deployed(pet: Int) {
         active = pet
