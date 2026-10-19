@@ -19,6 +19,7 @@ class BattleTurnRunner(
 
     private var stepIndex = 0
     private lateinit var guard: SkillGuard
+    private val roster = PetRoster()
 
     /**
      * Fight the current battle. [steps] empty = spam [defaultCode] every turn.
@@ -31,6 +32,7 @@ class BattleTurnRunner(
     fun fight(steps: List<Step>, defaultCode: Int, label: String = ""): Result {
         stepIndex = 0
         guard = SkillGuard(defaultCode)   // 每場開打前已精靈恢復，PP 回滿
+        roster.reset()                    // 同上：全員復活、精靈1 先上
         var unknown = 0
         api.logger.i("開始戰鬥$label")
         while (true) {
@@ -88,9 +90,19 @@ class BattleTurnRunner(
             else -> {
                 val step = steps[stepIndex]
                 if (step.isSwitch) {
-                    deployPet(step.petIndex, alreadyOpen = false)   // 主動切換 (4-1)
                     stepIndex++
-                    turnUsed(TURN_SETTLE_MS)
+                    // 換不了的就別點：遊戲會拒絕，白耗 3 次驗證（約 15 秒）。跳過不耗回合，
+                    // 下一輪直接執行下一步。
+                    when (roster.checkSwitch(step.petIndex)) {
+                        PetRoster.SwitchCheck.ON_FIELD ->
+                            api.logger.i("精靈${step.petIndex} 已在場 → 跳過這步換人")
+                        PetRoster.SwitchCheck.DEFEATED ->
+                            api.logger.w("精靈${step.petIndex} 已戰敗 → 跳過這步換人，由場上精靈繼續打")
+                        PetRoster.SwitchCheck.GO -> {
+                            deployPet(step.petIndex, alreadyOpen = false)   // 主動切換 (4-1)
+                            turnUsed(TURN_SETTLE_MS)
+                        }
+                    }
                 } else {
                     if (!castChecked(step.code)) return false
                     if (!step.untilDefeat) stepIndex++   // *N stays; advances on 已戰敗
@@ -141,16 +153,39 @@ class BattleTurnRunner(
      * script by [DeployDecision].
      */
     private fun onPetDefeated(steps: List<Step>): Boolean {
+        roster.activeDefeated()
+        readDefeatedCards()
         val d = DeployDecision.decide(steps, stepIndex)
         stepIndex = d.nextStepIndex
         // deployPet returns whether a pet actually took the field. Propagate it:
-        // failing to deploy (scripted pet already 已戰敗 / recognition fails, or the
-        // whole team is down) returns false → PLAN_EXHAUSTED → retreat, instead of
-        // spinning the loop while PET_DEFEATED stays up.
+        // failing to deploy (recognition fails, or the whole team is down) returns
+        // false → PLAN_EXHAUSTED → retreat, instead of spinning the loop while
+        // PET_DEFEATED stays up.
         return when (val a = d.action) {
-            is DeployDecision.Action.Scripted -> deployPet(a.petIndex, alreadyOpen = true)
+            is DeployDecision.Action.Scripted ->
+                if (roster.isDefeated(a.petIndex)) {
+                    // 以前會對著陣亡卡拖 3 次再撤退；改補位存活的，腳本照走
+                    api.logger.w("腳本要換的精靈${a.petIndex} 已戰敗 → 改補位存活的精靈")
+                    deployPet(null, alreadyOpen = true)
+                } else {
+                    deployPet(a.petIndex, alreadyOpen = true)
+                }
             DeployDecision.Action.Fallback -> deployPet(null, alreadyOpen = true)
             DeployDecision.Action.PlanExhausted -> false
+        }
+    }
+
+    /**
+     * Read every 「已戰敗」 label on the open 換精靈 sub-screen and map each to its card
+     * by x ([SeerLayout.petCardAt]). One findAll on a frame the main loop just took.
+     */
+    private fun readDefeatedCards() {
+        if (!templates.has(SeerTemplates.PET_DEFEATED)) return
+        val cards = api.findAll(templates.get(SeerTemplates.PET_DEFEATED))
+            .mapNotNull { SeerLayout.petCardAt(it.region.center.x) }
+        roster.markDefeated(cards)
+        if (roster.defeatedPets.isNotEmpty()) {
+            api.logger.i("已戰敗：精靈${roster.defeatedPets.joinToString("、")}")
         }
     }
 
@@ -175,7 +210,7 @@ class BattleTurnRunner(
      */
     private fun deployPet(target: Int?, alreadyOpen: Boolean): Boolean {
         val slots: List<Int> = when (target) {
-            null -> (0 until SeerLayout.PET_COUNT).toList()              // fallback: try each
+            null -> roster.fallbackOrder().map { it - 1 }                // fallback: 只試存活的
             else -> listOf(target - 1).filter { it in 0 until SeerLayout.PET_COUNT }
         }
         if (slots.isEmpty()) return false
@@ -196,6 +231,7 @@ class BattleTurnRunner(
                 api.sleep(delays.afterSwitch); api.refreshScreen()
                 if (verifyDeployed(activeSwitch = !alreadyOpen)) {
                     guard.reset()   // 新精靈上場：PP／封印是前一隻的
+                    roster.deployed(slotIndex + 1)
                     return true
                 }
                 api.logger.w("換精靈未通過驗證")

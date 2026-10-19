@@ -111,6 +111,18 @@ object SeerLayout {
     val PET_SLOTS: List<Location> = PET_REGIONS.map { it.center }
     val PET_COUNT = PET_SLOTS.size
 
+    /**
+     * Which 換精靈 card (1..6) a mark at normalized [x] sits on (e.g. 「已戰敗」), or null
+     * left of the first card. 頭像 sit at each card's left edge, so a mark on a card
+     * lies between its head's left edge and the next card's; [PET_CARD_SLACK_PX] lets
+     * a mark start a little left of the head. By x alone, since the label's height
+     * on the card isn't calibrated.
+     */
+    fun petCardAt(x: Int): Int? =
+        PET_REGIONS.indexOfLast { it.x - PET_CARD_SLACK_PX <= x }.takeIf { it >= 0 }?.plus(1)
+
+    private const val PET_CARD_SLACK_PX = 16
+
     /** Base code for pet-switch actions: PET_CODE_BASE + n = 換精靈(n+1). */
     const val PET_CODE_BASE = 10  // codes 11..16
     /** Drag this many normalized px upward from a pet slot to deploy it (拖動出戰). */
