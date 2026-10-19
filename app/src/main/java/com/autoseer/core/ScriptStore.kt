@@ -1,6 +1,7 @@
 package com.autoseer.core
 
 import android.content.Context
+import com.autoseer.scripts.ScriptBatch
 import com.autoseer.scripts.SeerLayout
 import org.json.JSONArray
 import org.json.JSONObject
@@ -57,13 +58,18 @@ object ScriptStore {
     }
 
     fun delete(ctx: Context, id: String) {
-        val all = list(ctx).filterNot { it.id == id }
-        writeAll(ctx, all)
-        if (selectedId(ctx) == id) {
-            val next = all.firstOrNull()
-            if (next != null) setSelected(ctx, next.id)
-            else prefs(ctx).edit().remove(KEY_SELECTED).apply()
-        }
+        deleteMany(ctx, setOf(id))
+    }
+
+    /** Delete several (清單多選刪除); returns how many were removed. */
+    fun deleteMany(ctx: Context, ids: Set<String>): Int {
+        val r = ScriptBatch.remove(list(ctx), ids, selectedId(ctx)) { it.id }
+        if (r.removed == 0) return 0
+        writeAll(ctx, r.remaining)
+        val next = r.selectedId
+        if (next != null) setSelected(ctx, next)
+        else prefs(ctx).edit().remove(KEY_SELECTED).apply()
+        return r.removed
     }
 
     /**

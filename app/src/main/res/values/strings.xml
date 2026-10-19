@@ -123,6 +123,16 @@
     <string name="import_ok">已從剪貼簿匯入 %1$d 個腳本</string>
     <string name="import_fail">剪貼簿內容不是有效的腳本 JSON</string>
     <string name="import_empty">剪貼簿是空的</string>
+    <string name="script_multi_select_hint">長按腳本可多選，批次匯出或刪除</string>
+    <string name="script_selected_count">已選 %1$d 個腳本（點擊勾選／取消）</string>
+    <string name="script_select_all">全選</string>
+    <string name="script_export_selected">匯出</string>
+    <string name="script_delete_selected">刪除</string>
+    <string name="script_cancel_select">取消</string>
+    <string name="script_delete_confirm_title">刪除腳本</string>
+    <string name="script_delete_confirm_msg">確定刪除選取的 %1$d 個腳本？\n%2$s\n\n刪除後無法復原，可先按「匯出」備份。</string>
+    <string name="script_delete_confirm_ok">刪除</string>
+    <string name="script_deleted_n">已刪除 %1$d 個腳本</string>
     <string name="no_scripts">尚無腳本，點上方「＋ 新增腳本」建立</string>
 
     <!-- 延遲設定（全域） -->

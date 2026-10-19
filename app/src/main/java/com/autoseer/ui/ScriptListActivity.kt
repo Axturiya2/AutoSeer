@@ -9,21 +9,36 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.autoseer.R
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
 import com.autoseer.databinding.ActivityScriptListBinding
+import com.autoseer.scripts.MultiSelection
+import com.autoseer.scripts.ScriptBatch
 import com.google.android.material.button.MaterialButton
 
 /**
  * Script list for one mission category (精靈因子…): 匯入／匯出／＋新增腳本 plus a
  * tile per saved script (active one marked ●). Tapping a tile opens the editor.
+ *
+ * Long-pressing a tile enters selection mode (FR-10): taps then toggle ☑/☐ and the
+ * top bar becomes 全選／匯出／刪除／取消, so one or several scripts can be exported
+ * (same JSON array as 匯出腳本) or deleted after a confirm dialog.
  */
 class ScriptListActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityScriptListBinding
     private lateinit var category: String
+    private var scripts: List<SeerScript> = emptyList()
+    private val selection = MultiSelection()
+
+    /** 選取模式中按返回＝離開選取模式，不關頁。 */
+    private val exitSelectionOnBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() = endSelection()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,6 +52,16 @@ class ScriptListActivity : AppCompatActivity() {
         }
         binding.btnExport.setOnClickListener { exportToClipboard() }
         binding.btnImport.setOnClickListener { importFromClipboard() }
+
+        binding.btnSelectAll.setOnClickListener {
+            selection.toggleAll(scripts.map { it.id }); refreshSelectionUi()
+        }
+        binding.btnExportSelected.setOnClickListener { exportSelected() }
+        binding.btnDeleteSelected.setOnClickListener { confirmDeleteSelected() }
+        binding.btnCancelSelect.setOnClickListener { endSelection() }
+        onBackPressedDispatcher.addCallback(this, exitSelectionOnBack)
+
+        savedInstanceState?.getStringArrayList(STATE_SELECTED)?.let { selection.restore(it) }
     }
 
     override fun onResume() {
@@ -44,14 +69,18 @@ class ScriptListActivity : AppCompatActivity() {
         rebuildList()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putStringArrayList(STATE_SELECTED, ArrayList(selection.selected))
+    }
+
     private fun rebuildList() {
-        val scripts = ScriptStore.list(this, category)
-        val selectedId = ScriptStore.selectedId(this)
+        scripts = ScriptStore.list(this, category)
+        selection.retain(scripts.map { it.id })
         binding.listContainer.removeAllViews()
         binding.emptyHint.visibility = if (scripts.isEmpty()) View.VISIBLE else View.GONE
 
         for (s in scripts) {
-            val marker = if (s.id == selectedId) "● " else ""
             val btn = MaterialButton(
                 this, null,
                 com.google.android.material.R.attr.materialButtonOutlinedStyle,
@@ -60,22 +89,92 @@ class ScriptListActivity : AppCompatActivity() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                 )
-                text = marker + s.displayName
-                setOnClickListener { startActivity(ScriptEditActivity.intent(this@ScriptListActivity, s.id, category)) }
+                setOnClickListener {
+                    if (selection.active) {
+                        selection.toggle(s.id); refreshSelectionUi()
+                    } else {
+                        startActivity(ScriptEditActivity.intent(this@ScriptListActivity, s.id, category))
+                    }
+                }
+                setOnLongClickListener {
+                    selection.start(s.id); refreshSelectionUi(); true
+                }
             }
             binding.listContainer.addView(btn)
         }
+        refreshSelectionUi()
+    }
+
+    /** Swap the top bar and re-label tiles (☑/☐ only while selecting). */
+    private fun refreshSelectionUi() {
+        val selecting = selection.active
+        val normal = if (selecting) View.GONE else View.VISIBLE
+        binding.normalBar.visibility = normal
+        binding.btnAdd.visibility = normal
+        binding.selectionBar.visibility = if (selecting) View.VISIBLE else View.GONE
+        binding.multiSelectHint.visibility =
+            if (!selecting && scripts.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.selectionCount.text = getString(R.string.script_selected_count, selection.size)
+        exitSelectionOnBack.isEnabled = selecting
+
+        val activeId = ScriptStore.selectedId(this)
+        scripts.forEachIndexed { i, s ->
+            (binding.listContainer.getChildAt(i) as? MaterialButton)?.text = tileLabel(s, activeId, selecting)
+        }
+    }
+
+    private fun tileLabel(s: SeerScript, activeId: String?, selecting: Boolean): String {
+        val check = when {
+            !selecting -> ""
+            s.id in selection -> "☑ "
+            else -> "☐ "
+        }
+        val marker = if (s.id == activeId) "● " else ""
+        return check + marker + s.displayName
+    }
+
+    private fun endSelection() {
+        selection.clear()
+        refreshSelectionUi()
     }
 
     private fun exportToClipboard() {
-        val scripts = ScriptStore.list(this, category)
-        if (scripts.isEmpty()) {
+        val all = ScriptStore.list(this, category)
+        if (all.isEmpty()) {
             Toast.makeText(this, R.string.no_scripts, Toast.LENGTH_SHORT).show()
             return
         }
-        val json = ScriptStore.exportAllJson(scripts)
+        copyJson(all)
+    }
+
+    private fun exportSelected() {
+        val picked = ScriptBatch.pick(scripts, selection.selected) { it.id }
+        if (picked.isEmpty()) return
+        copyJson(picked)
+        endSelection()
+    }
+
+    private fun copyJson(list: List<SeerScript>) {
+        val json = ScriptStore.exportAllJson(list)
         clipboard().setPrimaryClip(ClipData.newPlainText("AutoSeer scripts", json))
-        Toast.makeText(this, getString(R.string.export_copied, scripts.size), Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, getString(R.string.export_copied, list.size), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun confirmDeleteSelected() {
+        val picked = ScriptBatch.pick(scripts, selection.selected) { it.id }
+        if (picked.isEmpty()) return
+        val names = picked.joinToString("\n") { "・" + it.displayName }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.script_delete_confirm_title)
+            .setMessage(getString(R.string.script_delete_confirm_msg, picked.size, names))
+            .setPositiveButton(R.string.script_delete_confirm_ok) { _, _ ->
+                val n = ScriptStore.deleteMany(this, picked.map { it.id }.toSet())
+                Toast.makeText(this, getString(R.string.script_deleted_n, n), Toast.LENGTH_SHORT).show()
+                selection.clear()
+                rebuildList()
+            }
+            .setNegativeButton(R.string.script_cancel_select, null)
+            .show()
     }
 
     private fun importFromClipboard() {
@@ -101,6 +200,7 @@ class ScriptListActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_CATEGORY = "extra_category"
         const val EXTRA_TITLE = "extra_title"
+        private const val STATE_SELECTED = "state_selected"
 
         fun intent(ctx: Context, category: String, title: String): Intent =
             Intent(ctx, ScriptListActivity::class.java).apply {
