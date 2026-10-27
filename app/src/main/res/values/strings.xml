@@ -10,6 +10,9 @@
     <string name="step_capture">3. 授權螢幕擷取並啟動</string>
     <string name="btn_open_accessibility">開啟無障礙設定</string>
     <string name="btn_grant_overlay">授權懸浮視窗</string>
+    <string name="btn_pet_folder">選擇精靈圖庫資料夾</string>
+    <string name="status_pet_folder_set">精靈圖庫：%1$s</string>
+    <string name="status_pet_folder_none">精靈圖庫：未設定（擷取卡前先選資料夾）</string>
     <string name="btn_start">授權螢幕擷取並啟動</string>
     <string name="btn_stop">停止服務</string>
 
@@ -38,9 +41,11 @@
     <string name="opt_title">選項</string>
     <string name="opt_max">清關場數上限</string>
     <string name="opt_start">起始關卡（中途續跑用，第1關填1）</string>
-    <string name="opt_retries">每關撤退重試上限（0＝無限）</string>
+    <string name="opt_loops">循環輪數（固定關卡數用，如精靈因子填3；1＝跑一輪）</string>
+    <string name="opt_retries">每關失敗／撤退重試上限（0＝無限）</string>
     <string name="opt_default_slot">預設技能格 (1–5)</string>
     <string name="opt_heal">戰前按「精靈恢復」</string>
+    <string name="opt_lobby_on_exhaust">失敗達重試上限後回到大廳（關閉＝待在原地）</string>
     <string name="opt_advance">沿關卡地圖推進</string>
     <string name="btn_save">儲存設定</string>
     <string name="saved">已儲存設定</string>
@@ -57,6 +62,103 @@
     <string name="editor_to_pet">切換到：換精靈頁</string>
     <string name="editor_to_skill">切換到：技能頁</string>
     <string name="editor_hint_pet">點精靈(1~6)加入「換精靈」動作(執行時會自動 點精靈→選取→向上拖曳出戰)</string>
+    <string name="editor_until_defeat">加入時標記 *N（狂點此技至陣亡再換下一步）</string>
     <string name="preset_title">載入關卡預設（會覆蓋上方計畫）：</string>
     <string name="preset_loaded">已載入預設</string>
+
+    <!-- FGA 式主頁入口 -->
+    <string name="home_missions">周回腳本</string>
+    <string name="home_settings">更多設定</string>
+    <string name="home_more">更多選項</string>
+    <string name="home_debug">Debug</string>
+    <string name="home_factor_order">因子關卡排序</string>
+    <string name="home_more_debug">更多選項 / Debug</string>
+    <string name="more_debug_title">更多選項 / Debug</string>
+
+    <!-- 周回腳本（任務分類） -->
+    <string name="missions_title">周回腳本</string>
+    <string name="missions_desc">選擇要自動執行的關卡類型。</string>
+    <string name="mission_seer_factor">精靈因子</string>
+    <string name="mission_daily">每日任務</string>
+    <string name="mission_custom">自製腳本</string>
+    <string name="daily_title">每日任務</string>
+    <string name="daily_placeholder">每日任務自動化尚未開放，敬請期待。</string>
+
+    <!-- 更多設定 -->
+    <string name="settings_title">更多設定</string>
+    <string name="settings_run_title">執行選項（全域）</string>
+    <string name="settings_delay_entry">全域延遲設定</string>
+
+    <!-- Debug -->
+    <string name="debug_title">Debug</string>
+    <string name="debug_desc">啟動服務後，畫面上的懸浮控制列提供除錯工具：\n\n・存畫面：把目前正規化後的彩色畫面存到外部檔案，供裁切成樣板使用。\n・測試偵測：對每張樣板回報比對分數（不點擊任何位置），用來確認辨識是否正常。\n\n這些動作實際由懸浮列的按鈕觸發，本頁僅作說明。</string>
+
+    <!-- 更多選項 -->
+    <string name="more_title">更多選項</string>
+    <string name="more_placeholder">語言、匯入匯出、關於等選項將於後續版本加入。</string>
+
+    <!-- 多腳本管理 -->
+    <string name="home_scripts">周回腳本（多腳本管理）</string>
+    <string name="home_current">目前腳本：%1$s</string>
+    <string name="script_list_title">周回腳本</string>
+    <string name="script_export">匯出腳本</string>
+    <string name="script_import">匯入腳本</string>
+    <string name="script_add">＋ 新增腳本</string>
+    <string name="script_new_name">新腳本</string>
+    <string name="script_default_name">預設</string>
+    <string name="script_edit_title">編輯腳本</string>
+    <string name="script_name">腳本名稱</string>
+    <string name="script_name_hint">為這個腳本命名</string>
+    <string name="script_note">備註</string>
+    <string name="script_note_hint">Add a note</string>
+    <string name="script_skill_order">技能順序</string>
+    <string name="skill_not_recorded">尚未設定 — 開啟視覺化編輯器</string>
+    <string name="script_skill_names_title">技能格顯示名稱（選填；執行仍以編號 1~5 進行）</string>
+    <string name="script_skill_name_hint">技能格%1$d</string>
+    <string name="script_set_active">設為使用中</string>
+    <string name="script_delete">刪除腳本</string>
+    <string name="script_saved">已儲存腳本</string>
+    <string name="script_deleted">已刪除腳本</string>
+    <string name="script_activated">已設為使用中</string>
+    <string name="export_copied">已複製 %1$d 個腳本的 JSON 到剪貼簿</string>
+    <string name="import_ok">已從剪貼簿匯入 %1$d 個腳本</string>
+    <string name="import_fail">剪貼簿內容不是有效的腳本 JSON</string>
+    <string name="import_empty">剪貼簿是空的</string>
+    <string name="script_multi_select_hint">長按腳本可多選，批次匯出或刪除</string>
+    <string name="script_selected_count">已選 %1$d 個腳本（點擊勾選／取消）</string>
+    <string name="script_select_all">全選</string>
+    <string name="script_export_selected">匯出</string>
+    <string name="script_delete_selected">刪除</string>
+    <string name="script_cancel_select">取消</string>
+    <string name="script_delete_confirm_title">刪除腳本</string>
+    <string name="script_delete_confirm_msg">確定刪除選取的 %1$d 個腳本？\n%2$s\n\n刪除後無法復原，可先按「匯出」備份。</string>
+    <string name="script_delete_confirm_ok">刪除</string>
+    <string name="script_deleted_n">已刪除 %1$d 個腳本</string>
+    <string name="no_scripts">尚無腳本，點上方「＋ 新增腳本」建立</string>
+
+    <!-- 延遲設定（全域） -->
+    <string name="home_delays">延遲設定（全域）</string>
+    <string name="delay_title">延遲設定</string>
+    <string name="delay_desc">全域共用，套用在每個關鍵動作之後（ms）。點太快容易沒真正按到或誤開選單；數值越大越穩、越小越快。0＝不額外等待。</string>
+    <string name="delay_heal">精靈恢復後</string>
+    <string name="delay_enter">進入戰鬥後</string>
+    <string name="delay_skill">施放技能後</string>
+    <string name="delay_switch">換精靈後</string>
+    <string name="delay_result">結算點擊後（勝利／失敗）</string>
+    <string name="delay_retreat">撤退各步之間</string>
+    <string name="delay_reset">還原預設(500)</string>
+
+    <!-- 自製腳本（FR-12） -->
+    <string name="macro_shots_title">截圖庫</string>
+    <string name="macro_shots_desc">在遊戲中按懸浮窗「截圖製作」，或從相簿匯入截圖（會等比縮到高 720）。之後做腳本時從這裡挑截圖來框按鈕。長按可刪除。</string>
+    <string name="macro_shots_import">從相簿匯入</string>
+    <string name="macro_shots_empty">還沒有截圖</string>
+    <string name="macro_shot_label">%1$s\n%2$d×%3$d</string>
+    <string name="macro_shot_label_new">%1$s（新）\n%2$d×%3$d</string>
+    <string name="macro_shot_imported">已匯入截圖</string>
+    <string name="macro_shot_import_fail">匯入失敗：%1$s</string>
+    <string name="macro_shot_delete_title">刪除截圖？</string>
+    <string name="macro_shot_delete_msg">刪除 %1$s 的截圖。用這張框好的按鈕已存在腳本裡，不受影響。</string>
+    <string name="macro_editor_pending">自製腳本編輯器還在開發（FR-12 第 3 階段）</string>
+    <string name="export_too_large">腳本含圖片太大，剪貼簿放不下，請少選幾個再匯出</string>
 </resources>

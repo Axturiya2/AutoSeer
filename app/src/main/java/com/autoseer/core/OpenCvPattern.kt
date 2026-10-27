@@ -3,6 +3,7 @@ package com.autoseer.core
 import com.autoseer.libautomata.IPattern
 import com.autoseer.libautomata.Region
 import com.autoseer.libautomata.Size
+import org.opencv.core.Core
 import org.opencv.core.Mat
 import org.opencv.core.Rect
 import org.opencv.imgcodecs.Imgcodecs
@@ -20,7 +21,15 @@ class OpenCvPattern(val mat: Mat) : IPattern {
         val safe = clampRegion(region)
         val sub = Mat(mat, Rect(safe.x, safe.y, safe.width, safe.height))
         // Rect Mat shares data with parent; clone so callers can close independently.
-        return OpenCvPattern(sub.clone())
+        val out = sub.clone()
+        // Release the ROI view header NOW. It holds a reference on the parent
+        // (full-screen) Mat, so leaving it to the GC finalizer pins the parent's
+        // native buffer even after refreshScreen close()s it — leaking ~1 full
+        // frame per crop. Over many 換精靈 rounds those pile up in native memory
+        // → OOM → the whole emulator stalls (FPS 60→10) and 擷取螢幕 times out,
+        // stopping the script (影片30: 12s freeze → black screen).
+        sub.release()
+        return OpenCvPattern(out)
     }
 
     override fun resize(size: Size): IPattern {
@@ -28,6 +37,9 @@ class OpenCvPattern(val mat: Mat) : IPattern {
         Imgproc.resize(mat, dst, org.opencv.core.Size(size.width.toDouble(), size.height.toDouble()))
         return OpenCvPattern(dst)
     }
+
+    /** Mean intensity (0..255) of the (single-channel grayscale) mat. */
+    override fun meanGray(): Double = Core.mean(mat).`val`[0]
 
     override fun save(path: String) {
         Imgcodecs.imwrite(path, mat)

@@ -1,0 +1,100 @@
+name: Android Build
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Unit tests + Debug APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 發佈 Release 需要寫入權限
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          # Skip the action's default install of the obsolete "tools" package,
+          # which no longer exists in the SDK repo and fails the step.
+          packages: ""
+
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Run JVM unit tests (scripts + libautomata)
+        run: ./gradlew :scripts:test :libautomata:test --stacktrace
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: "**/build/reports/tests/**"
+          if-no-files-found: ignore
+
+      # 手機瀏覽器（Chrome Safe Browsing）會掃描/節流 .apk 下載，導致極慢；
+      # 打包成 .zip 可避開掃描、全速下載（解壓後安裝 apk）。兩者都發佈。
+      - name: Package APK as zip (fast browser download)
+        if: github.event_name == 'push'
+        run: |
+          cd app/build/outputs/apk/debug
+          zip -j app-debug.zip app-debug.apk
+
+      # 只在 push（非 PR）時發佈到 Releases，標記為 latest。
+      # 固定下載連結：
+      #   .zip（推薦，快）：https://github.com/maye0w0/AutoSeer/releases/latest/download/app-debug.zip
+      #   .apk（直裝）：    https://github.com/maye0w0/AutoSeer/releases/latest/download/app-debug.apk
+      - name: Publish debug APK to Releases
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-${{ github.run_number }}
+          name: "測試版 APK #${{ github.run_number }}（${{ github.ref_name }}）"
+          body: |
+            自動建置的 debug APK（debug 簽章）。
+
+            - 分支：`${{ github.ref_name }}`
+            - Commit：`${{ github.sha }}`
+
+            下載（固定連結，永遠指向最新版）：
+            - 推薦（快，避開瀏覽器對 apk 的掃描節流）：解壓後安裝
+              https://github.com/maye0w0/AutoSeer/releases/latest/download/app-debug.zip
+            - 直接安裝（若瀏覽器不擋）：
+              https://github.com/maye0w0/AutoSeer/releases/latest/download/app-debug.apk
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.zip
+          make_latest: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

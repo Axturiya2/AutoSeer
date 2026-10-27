@@ -8,3 +8,9 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
+# 本機備份壓縮檔（例如 AutoSeer源碼快照.7z，138MB，超過 GitHub 單檔上限）
+*.7z
+
+# 本機開發產物（tools/dev.sh 的 log、截圖、覆寫設定）
+.dev/
+.claude/settings.local.json

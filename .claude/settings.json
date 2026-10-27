@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tools/dev.sh *)",
+      "Bash(bash tools/dev.sh *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)"
+    ],
+    "deny": [
+      "Read(**/build/**)",
+      "Read(.gradle/**)",
+      "Read(.kotlin/**)",
+      "Read(**/*.7z)",
+      "Read(UI/**/*.pptx)"
+    ]
+  },
+  "sandbox": {
+    "excludedCommands": [
+      "tools/dev.sh *",
+      "bash tools/dev.sh *",
+      "git push *"
+    ]
+  }
+}

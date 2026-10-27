@@ -7,17 +7,23 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.autoseer.R
-import com.autoseer.core.SeerPrefs
+import com.autoseer.core.PetImagePrefs
+import com.autoseer.core.SafStore
 import com.autoseer.databinding.ActivityMainBinding
 import com.autoseer.input.GestureAccessibilityService
 import com.autoseer.service.AutoSeerService
 
+/**
+ * FGA-style home: entry buttons (周回腳本／更多設定／更多選項／Debug), an
+ * authorization-status card (無障礙／懸浮), and a start/stop bar. Script content,
+ * run options and delays all live behind their own pages now.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -36,10 +42,33 @@ class MainActivity : AppCompatActivity() {
     private val notificationLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { requestCapture() }
 
+    private val petFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                PetImagePrefs.setTreeUri(this, uri.toString())
+                refreshStatus()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        binding.btnMissions.setOnClickListener {
+            startActivity(Intent(this, MissionListActivity::class.java))
+        }
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+        binding.btnMore.setOnClickListener {
+            startActivity(Intent(this, FactorListActivity::class.java))
+        }
+        binding.btnDebug.setOnClickListener {
+            startActivity(Intent(this, MoreActivity::class.java))
+        }
 
         binding.btnAccessibility.setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -49,75 +78,16 @@ class MainActivity : AppCompatActivity() {
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
             )
         }
-        binding.btnSave.setOnClickListener { saveSettings() }
-        binding.btnEditor.setOnClickListener {
-            startActivity(Intent(this, EditorActivity::class.java))
-        }
-        binding.btnStart.setOnClickListener {
-            saveSettings()
-            ensureNotificationThenCapture()
-        }
+
+        binding.btnPetFolder.setOnClickListener { petFolderLauncher.launch(storageRootInitialUri()) }
+
+        binding.btnStart.setOnClickListener { ensureNotificationThenCapture() }
         binding.btnStop.setOnClickListener { startService(AutoSeerService.stopIntent(this)) }
-
-        loadSettings()
-        buildPresetButtons()
-    }
-
-    private fun buildPresetButtons() {
-        binding.presetContainer.removeAllViews()
-        for (preset in com.autoseer.scripts.SeerPresets.ALL) {
-            val btn = com.google.android.material.button.MaterialButton(
-                this, null,
-                com.google.android.material.R.attr.materialButtonOutlinedStyle,
-            ).apply {
-                layoutParams = android.widget.LinearLayout.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
-                )
-                text = "載入：${preset.name}（5關）"
-                setOnClickListener {
-                    binding.planInput.setText(preset.plan)
-                    saveSettings()
-                    Toast.makeText(this@MainActivity, R.string.preset_loaded, Toast.LENGTH_SHORT).show()
-                }
-            }
-            binding.presetContainer.addView(btn)
-        }
     }
 
     override fun onResume() {
         super.onResume()
         refreshStatus()
-        // Reflect any plan changes made in the visual editor.
-        binding.planInput.setText(SeerPrefs.planText(this))
-    }
-
-    private fun loadSettings() {
-        binding.planInput.setText(SeerPrefs.planText(this))
-        binding.editMaxBattles.setText(SeerPrefs.maxBattles(this).toString())
-        binding.editStartStage.setText(SeerPrefs.startStage(this).toString())
-        binding.editMaxRetries.setText(SeerPrefs.maxRetries(this).toString())
-        binding.editDefaultSlot.setText(SeerPrefs.defaultSlot(this).toString())
-        binding.healSwitch.isChecked = SeerPrefs.healBeforeBattle(this)
-        binding.advanceSwitch.isChecked = SeerPrefs.advanceMap(this)
-    }
-
-    private fun saveSettings() {
-        val max = binding.editMaxBattles.text.toString().toIntOrNull() ?: 30
-        val slot = (binding.editDefaultSlot.text.toString().toIntOrNull() ?: 2).coerceIn(1, 5)
-        val start = (binding.editStartStage.text.toString().toIntOrNull() ?: 1).coerceAtLeast(1)
-        val retries = (binding.editMaxRetries.text.toString().toIntOrNull() ?: 5).coerceAtLeast(0)
-        SeerPrefs.save(
-            ctx = this,
-            planText = binding.planInput.text.toString(),
-            maxBattles = max,
-            healBeforeBattle = binding.healSwitch.isChecked,
-            advanceMap = binding.advanceSwitch.isChecked,
-            defaultSlot = slot,
-            startStage = start,
-            maxRetries = retries,
-        )
-        Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
     }
 
     private fun refreshStatus() {
@@ -127,6 +97,11 @@ class MainActivity : AppCompatActivity() {
         val overlayOn = Settings.canDrawOverlays(this)
         binding.statusOverlay.text =
             getString(if (overlayOn) R.string.status_overlay_on else R.string.status_overlay_off)
+
+        val tree = PetImagePrefs.treeUri(this)
+        binding.statusPetFolder.text =
+            if (tree.isNullOrBlank()) getString(R.string.status_pet_folder_none)
+            else getString(R.string.status_pet_folder_set, SafStore.folderLabel(tree))
     }
 
     private fun ensureNotificationThenCapture() {
@@ -143,4 +118,14 @@ class MainActivity : AppCompatActivity() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projectionLauncher.launch(mpm.createScreenCaptureIntent())
     }
+
+    /**
+     * Initial folder for the 精靈圖庫 picker: the device's primary storage root, so
+     * the user lands where "auto seer" sits next to DCIM/Download/… and can pick or
+     * create it. SAF still requires the user to grant the folder once — it cannot be
+     * granted or created silently (the root itself is blocked for privacy).
+     */
+    private fun storageRootInitialUri(): Uri? = runCatching {
+        DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:")
+    }.getOrNull()
 }

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.os.Handler
@@ -12,6 +13,7 @@ import android.util.Log
 import com.autoseer.core.OpenCvPattern
 import com.autoseer.libautomata.IPattern
 import com.autoseer.libautomata.IScreenshotProvider
+import com.autoseer.libautomata.ScreenshotTimeoutException
 import com.autoseer.libautomata.Size
 import org.opencv.android.Utils
 import org.opencv.core.Mat
@@ -20,6 +22,14 @@ import org.opencv.imgproc.Imgproc
 /**
  * Captures the screen via MediaProjection and hands back normalized grayscale
  * screenshots (scaled so height == [NORMALIZED_HEIGHT]) as [OpenCvPattern]s.
+ *
+ * OBS-1 fix: the script polls only a few times/sec while the VirtualDisplay
+ * produces frames far faster, so the ImageReader's buffers fill and the producer
+ * stalls — after which `acquireLatestImage()` keeps returning a STALE frame
+ * (你的回合 already on screen but never in the analyzed image). Manually pressing
+ * 存畫面 "unstuck" it by doing one extra acquire that freed a buffer. So every
+ * grab now does that itself: **discard one (stale) frame to relieve back-pressure,
+ * then wait for a genuinely fresh frame.**
  */
 class ScreenCaptureManager(
     private val projection: MediaProjection,
@@ -32,25 +42,31 @@ class ScreenCaptureManager(
     private val normalizedWidth =
         (deviceWidth.toDouble() * normalizedHeight / deviceHeight).toInt()
 
+    // Capture at the normalized size (~1280x720) instead of full device resolution:
+    // the MediaProjection VirtualDisplay then mirrors and reads back a ~64%-smaller
+    // surface, cutting the per-frame compositor + GPU-readback load that (together
+    // with the game's 換精靈 animation spike) can stall the emulator's display on
+    // lower-throughput GPUs. Gestures still use the real device size (deviceSize()),
+    // so tap coordinates are unaffected; the captured frame is already normalized.
+    private val captureWidth = normalizedWidth
+    private val captureHeight = normalizedHeight
+
     private val handlerThread = HandlerThread("AutoSeerCapture").apply { start() }
     private val handler = Handler(handlerThread.looper)
 
     private val imageReader: ImageReader =
-        ImageReader.newInstance(deviceWidth, deviceHeight, PixelFormat.RGBA_8888, 2)
+        ImageReader.newInstance(captureWidth, captureHeight, PixelFormat.RGBA_8888, MAX_IMAGES)
 
     private var virtualDisplay: VirtualDisplay? = null
-    private var reusableBitmap: Bitmap? = null
 
     fun start() {
         projection.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                Log.i(TAG, "MediaProjection 已停止")
-            }
+            override fun onStop() { Log.i(TAG, "MediaProjection 已停止") }
         }, handler)
         virtualDisplay = projection.createVirtualDisplay(
             "AutoSeerCapture",
-            deviceWidth,
-            deviceHeight,
+            captureWidth,
+            captureHeight,
             densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader.surface,
@@ -62,10 +78,55 @@ class ScreenCaptureManager(
     override fun normalizedSize(): Size = Size(normalizedWidth, normalizedHeight)
     override fun deviceSize(): Size = Size(deviceWidth, deviceHeight)
 
+    /**
+     * Grab a fresh device-size frame. Discards one possibly-stale buffered frame
+     * first (relieving producer back-pressure — the "存畫面" effect), then waits
+     * for the next frame the producer pushes.
+     */
+    private fun grabDeviceBitmap(): Bitmap {
+        imageReader.acquireLatestImage()?.close()   // drop stale, free a buffer
+        var attempts = 0
+        while (true) {
+            Thread.sleep(FRAME_WAIT_MS)
+            val image = imageReader.acquireLatestImage()
+            if (image != null) {
+                try {
+                    return imageToBitmap(image)
+                } finally {
+                    image.close()
+                }
+            }
+            if (++attempts > MAX_WAIT_TICKS) {
+                // Recoverable: AutomataApi.refreshScreen reuses the last frame for a
+                // bounded run of these so a transient display stall doesn't kill the run.
+                throw ScreenshotTimeoutException("擷取螢幕逾時：沒有可用的畫面影格")
+            }
+        }
+    }
+
+    /** Copy an ImageReader frame into a device-size ARGB bitmap (cropping row padding). */
+    private fun imageToBitmap(image: Image): Bitmap {
+        val plane = image.planes[0]
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * captureWidth
+        val bufferedWidth = captureWidth + rowPadding / pixelStride
+        val buf = Bitmap.createBitmap(bufferedWidth, captureHeight, Bitmap.Config.ARGB_8888)
+        buf.copyPixelsFromBuffer(plane.buffer)
+        return if (bufferedWidth != captureWidth) {
+            val cropped = Bitmap.createBitmap(buf, 0, 0, captureWidth, captureHeight)
+            buf.recycle()
+            cropped
+        } else {
+            buf
+        }
+    }
+
     override fun takeScreenshot(): IPattern {
-        val bitmap = acquireBitmap()
+        val bitmap = grabDeviceBitmap()
         val rgba = Mat()
         Utils.bitmapToMat(bitmap, rgba)
+        bitmap.recycle()
         val gray = Mat()
         Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGBA2GRAY)
         rgba.release()
@@ -79,44 +140,21 @@ class ScreenCaptureManager(
         return OpenCvPattern(resized)
     }
 
-    /** Acquire the latest frame as an ARGB bitmap, retrying briefly if none yet. */
-    private fun acquireBitmap(): Bitmap {
-        var attempts = 0
-        while (true) {
-            val image = imageReader.acquireLatestImage()
-            if (image != null) {
-                try {
-                    val plane = image.planes[0]
-                    val pixelStride = plane.pixelStride
-                    val rowStride = plane.rowStride
-                    val rowPadding = rowStride - pixelStride * deviceWidth
-                    val bufferedWidth = deviceWidth + rowPadding / pixelStride
-                    val bmp = reusableBitmap?.takeIf {
-                        it.width == bufferedWidth && it.height == deviceHeight
-                    } ?: Bitmap.createBitmap(bufferedWidth, deviceHeight, Bitmap.Config.ARGB_8888)
-                        .also { reusableBitmap = it }
-                    bmp.copyPixelsFromBuffer(plane.buffer)
-                    // Crop away the row padding on the right, if any.
-                    return if (bufferedWidth != deviceWidth) {
-                        Bitmap.createBitmap(bmp, 0, 0, deviceWidth, deviceHeight)
-                    } else {
-                        bmp
-                    }
-                } finally {
-                    image.close()
-                }
-            }
-            if (++attempts > 40) error("擷取螢幕逾時：沒有可用的畫面影格")
-            Thread.sleep(25)
-        }
+    /**
+     * A viewable color snapshot at the normalized size (same scaling the matcher
+     * sees), for template capture / debugging. Caller owns the returned bitmap.
+     */
+    fun captureColorBitmap(): Bitmap {
+        val src = grabDeviceBitmap()
+        val scaled = Bitmap.createScaledBitmap(src, normalizedWidth, normalizedHeight, true)
+        if (scaled !== src) src.recycle()
+        return scaled
     }
 
     fun release() {
         virtualDisplay?.release()
         virtualDisplay = null
         imageReader.close()
-        reusableBitmap?.recycle()
-        reusableBitmap = null
         runCatching { projection.stop() }
         handlerThread.quitSafely()
     }
@@ -124,5 +162,9 @@ class ScreenCaptureManager(
     companion object {
         private const val TAG = "AutoSeer"
         const val NORMALIZED_HEIGHT = 720
+        private const val MAX_IMAGES = 3
+        // Wait ~1+ frame between the discard and the fresh acquire.
+        private const val FRAME_WAIT_MS = 45L
+        private const val MAX_WAIT_TICKS = 45   // ~2s timeout
     }
 }

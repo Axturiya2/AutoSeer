@@ -34,6 +34,10 @@ class BattleEditorView @JvmOverloads constructor(
     var mode: Mode = Mode.SKILL
         set(value) { field = value; invalidate() }
 
+    /** Optional display names for skill slots 1..5; shown under the badge when set. */
+    var skillNames: List<String> = emptyList()
+        set(value) { field = value; invalidate() }
+
     private fun load(name: String): Bitmap? = runCatching {
         context.assets.open(name).use { BitmapFactory.decodeStream(it) }
     }.getOrNull()
@@ -66,6 +70,10 @@ class BattleEditorView @JvmOverloads constructor(
         color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = 30f; isFakeBoldText = true
     }
     private val labelBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC000000.toInt() }
+    private val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = 26f; isFakeBoldText = true
+    }
+    private val nameBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCC000000.toInt() }
 
     private fun paint(c: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c }
     private fun stroke(c: String) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -85,7 +93,25 @@ class BattleEditorView @JvmOverloads constructor(
             canvas.drawRoundRect(rf, 10f, 10f, fill)
             canvas.drawRoundRect(rf, 10f, 10f, strokeP)
             drawBadge(canvas, rf.centerX(), rf.top + 4f, h.badge)
+            nameFor(h)?.let { drawName(canvas, rf.centerX(), rf.centerY(), it) }
         }
+    }
+
+    /** Custom display name for a skill slot (1..5), or null to show just the badge. */
+    private fun nameFor(h: Hot): String? {
+        if (mode != Mode.SKILL || !h.skillStyle || h.code !in 1..5) return null
+        return skillNames.getOrNull(h.code - 1)?.takeIf { it.isNotBlank() }
+    }
+
+    private fun drawName(canvas: Canvas, cx: Float, cy: Float, text: String) {
+        val fm = namePaint.fontMetrics
+        val tw = namePaint.measureText(text)
+        val padX = 8f; val padY = 4f
+        val boxW = tw + padX * 2; val boxH = (fm.descent - fm.ascent) + padY * 2
+        canvas.drawRoundRect(
+            cx - boxW / 2, cy - boxH / 2, cx + boxW / 2, cy + boxH / 2, 6f, 6f, nameBg,
+        )
+        canvas.drawText(text, cx, cy - (fm.ascent + fm.descent) / 2, namePaint)
     }
 
     private fun drawBadge(canvas: Canvas, cx: Float, top: Float, text: String) {
