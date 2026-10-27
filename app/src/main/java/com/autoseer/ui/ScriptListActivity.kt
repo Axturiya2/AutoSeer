@@ -47,9 +47,8 @@ class ScriptListActivity : AppCompatActivity() {
         category = intent.getStringExtra(EXTRA_CATEGORY) ?: SeerScript.CATEGORY_SEER_FACTOR
         supportActionBar?.title = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.script_list_title)
 
-        binding.btnAdd.setOnClickListener {
-            startActivity(ScriptEditActivity.intent(this, null, category))
-        }
+        binding.btnAdd.setOnClickListener { openEditor(null) }
+        binding.btnShots.setOnClickListener { startActivity(MacroShotsActivity.intent(this)) }
         binding.btnExport.setOnClickListener { exportToClipboard() }
         binding.btnImport.setOnClickListener { importFromClipboard() }
 
@@ -93,7 +92,7 @@ class ScriptListActivity : AppCompatActivity() {
                     if (selection.active) {
                         selection.toggle(s.id); refreshSelectionUi()
                     } else {
-                        startActivity(ScriptEditActivity.intent(this@ScriptListActivity, s.id, category))
+                        openEditor(s.id)
                     }
                 }
                 setOnLongClickListener {
@@ -111,6 +110,7 @@ class ScriptListActivity : AppCompatActivity() {
         val normal = if (selecting) View.GONE else View.VISIBLE
         binding.normalBar.visibility = normal
         binding.btnAdd.visibility = normal
+        binding.btnShots.visibility = if (isCustom) normal else View.GONE
         binding.selectionBar.visibility = if (selecting) View.VISIBLE else View.GONE
         binding.multiSelectHint.visibility =
             if (!selecting && scripts.isNotEmpty()) View.VISIBLE else View.GONE
@@ -131,6 +131,17 @@ class ScriptListActivity : AppCompatActivity() {
         }
         val marker = if (s.id == activeId) "● " else ""
         return check + marker + s.displayName
+    }
+
+    private val isCustom: Boolean get() = category == SeerScript.CATEGORY_CUSTOM
+
+    /** [id] = null 為新增。自製腳本的編輯器是 FR-12 第 3 階段，先提示。 */
+    private fun openEditor(id: String?) {
+        if (isCustom) {
+            Toast.makeText(this, R.string.macro_editor_pending, Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(ScriptEditActivity.intent(this, id, category))
     }
 
     private fun endSelection() {
@@ -155,7 +166,12 @@ class ScriptListActivity : AppCompatActivity() {
     }
 
     private fun copyJson(list: List<SeerScript>) {
-        val json = ScriptStore.exportAllJson(list)
+        val json = ScriptStore.exportAllJson(this, list)
+        if (json.length > MAX_CLIP_CHARS) {
+            // 自製腳本的圖片嵌在 JSON 裡，太大塞不進剪貼簿（Binder 約 1MB 上限）
+            Toast.makeText(this, R.string.export_too_large, Toast.LENGTH_LONG).show()
+            return
+        }
         clipboard().setPrimaryClip(ClipData.newPlainText("AutoSeer scripts", json))
         Toast.makeText(this, getString(R.string.export_copied, list.size), Toast.LENGTH_SHORT).show()
     }
@@ -201,6 +217,9 @@ class ScriptListActivity : AppCompatActivity() {
         const val EXTRA_CATEGORY = "extra_category"
         const val EXTRA_TITLE = "extra_title"
         private const val STATE_SELECTED = "state_selected"
+
+        /** 剪貼簿文字上限（UTF-16 每字 2 bytes，留在 Binder 1MB 以內）。 */
+        private const val MAX_CLIP_CHARS = 400_000
 
         fun intent(ctx: Context, category: String, title: String): Intent =
             Intent(ctx, ScriptListActivity::class.java).apply {

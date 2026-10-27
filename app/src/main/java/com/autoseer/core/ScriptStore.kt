@@ -36,9 +36,12 @@ object ScriptStore {
 
     fun selectedId(ctx: Context): String? = prefs(ctx).getString(KEY_SELECTED, null)
 
-    /** The active script: the selected one, else the first, else null when empty. */
+    /**
+     * The active script: the selected one, else the first, else null when empty.
+     * 自製腳本（FR-12）不算，它的 planText 不是技能排序。
+     */
     fun selected(ctx: Context): SeerScript? {
-        val all = list(ctx)
+        val all = list(ctx).filterNot { it.isCustom }
         if (all.isEmpty()) return null
         val id = selectedId(ctx)
         return all.firstOrNull { it.id == id } ?: all.first()
@@ -48,13 +51,13 @@ object ScriptStore {
         prefs(ctx).edit().putString(KEY_SELECTED, id).apply()
     }
 
-    /** Insert or replace by id. Selects it if nothing is selected yet. */
+    /** Insert or replace by id. Selects it if nothing is selected yet (自製腳本除外). */
     fun upsert(ctx: Context, script: SeerScript) {
         val all = list(ctx).toMutableList()
         val i = all.indexOfFirst { it.id == script.id }
         if (i >= 0) all[i] = script else all += script
         writeAll(ctx, all)
-        if (selectedId(ctx) == null) setSelected(ctx, script.id)
+        if (selectedId(ctx) == null && !script.isCustom) setSelected(ctx, script.id)
     }
 
     fun delete(ctx: Context, id: String) {
@@ -66,7 +69,11 @@ object ScriptStore {
         val r = ScriptBatch.remove(list(ctx), ids, selectedId(ctx)) { it.id }
         if (r.removed == 0) return 0
         writeAll(ctx, r.remaining)
-        val next = r.selectedId
+        ids.forEach { MacroStorage.deleteImages(ctx, it) }
+        // 補位的「使用中」不能是自製腳本，改挑第一個一般腳本
+        val next = r.selectedId?.let { id ->
+            if (r.remaining.any { it.id == id && it.isCustom }) r.remaining.firstOrNull { !it.isCustom }?.id else id
+        }
         if (next != null) setSelected(ctx, next)
         else prefs(ctx).edit().remove(KEY_SELECTED).apply()
         return r.removed
@@ -105,34 +112,48 @@ object ScriptStore {
 
     // ---- JSON codec (also used for clipboard import/export) ----
 
-    fun exportAllJson(scripts: List<SeerScript>): String {
+    /** 自製腳本另附 "images"（圖片 id → base64 PNG），一個檔就能帶走整個腳本。 */
+    fun exportAllJson(ctx: Context, scripts: List<SeerScript>): String {
         val arr = JSONArray()
-        scripts.forEach { arr.put(toJson(it)) }
+        scripts.forEach { s ->
+            val o = toJson(s)
+            if (s.isCustom) o.put("images", JSONObject(MacroStorage.exportImages(ctx, s)))
+            arr.put(o)
+        }
         return arr.toString(2)
     }
+
+    /** 匯入的一個腳本，加上自製腳本附帶的圖片（id → base64 PNG）。 */
+    class Imported(val script: SeerScript, val images: Map<String, String>)
 
     /**
      * Parse clipboard JSON (single object or array) into scripts, assigning fresh
      * ids so an import never overwrites an existing script. Throws on invalid JSON.
      */
-    fun importJson(text: String): List<SeerScript> {
+    fun importJson(text: String): List<Imported> {
         val trimmed = text.trim()
         val objs = when {
-            trimmed.startsWith("[") -> parseArray(JSONArray(trimmed))
-            trimmed.startsWith("{") -> listOf(fromJson(JSONObject(trimmed)))
+            trimmed.startsWith("[") -> JSONArray(trimmed).let { arr -> (0 until arr.length()).map { arr.getJSONObject(it) } }
+            trimmed.startsWith("{") -> listOf(JSONObject(trimmed))
             else -> throw IllegalArgumentException("剪貼簿內容不是 JSON")
         }
-        return objs.map { it.copy(id = UUID.randomUUID().toString()) }
+        return objs.map { o -> Imported(fromJson(o).copy(id = UUID.randomUUID().toString()), imagesOf(o)) }
+    }
+
+    private fun imagesOf(o: JSONObject): Map<String, String> {
+        val m = o.optJSONObject("images") ?: return emptyMap()
+        return m.keys().asSequence().associateWith { m.optString(it, "") }
     }
 
     /** Import from clipboard text and append; returns how many were added. */
     fun importAndSave(ctx: Context, text: String): Int {
         val imported = importJson(text)
         if (imported.isEmpty()) return 0
+        imported.filter { it.script.isCustom }.forEach { MacroStorage.importImages(ctx, it.script.id, it.images) }
         val all = list(ctx).toMutableList()
-        all += imported
+        all += imported.map { it.script }
         writeAll(ctx, all)
-        if (selectedId(ctx) == null) setSelected(ctx, imported.first().id)
+        if (selectedId(ctx) == null) imported.firstOrNull { !it.script.isCustom }?.let { setSelected(ctx, it.script.id) }
         return imported.size
     }
 

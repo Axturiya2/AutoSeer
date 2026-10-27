@@ -30,7 +30,17 @@
         style="@style/Widget.Material3.Button.TonalButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
         android:minHeight="72dp"
         android:textSize="18sp"
         android:text="@string/mission_daily" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCustom"
+        style="@style/Widget.Material3.Button.TonalButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="72dp"
+        android:textSize="18sp"
+        android:text="@string/mission_custom" />
 </LinearLayout>

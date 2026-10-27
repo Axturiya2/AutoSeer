@@ -31,6 +31,9 @@ data class SeerScript(
 ) {
     val displayName: String get() = if (name.isBlank()) "--" else name
 
+    /** 自製腳本（FR-12）：[planText] 存 MacroCodec 文字，不是技能排序；不參與「使用中」腳本。 */
+    val isCustom: Boolean get() = category == CATEGORY_CUSTOM
+
     /** Player-facing label for a plan code, using custom skill names when set. */
     fun labelForCode(code: Int): String {
         if (code in 1..SeerLayout.SKILL_COUNT) {
@@ -42,6 +45,7 @@ data class SeerScript(
     companion object {
         const val CATEGORY_SEER_FACTOR = "seer_factor"
         const val CATEGORY_DAILY = "daily"
+        const val CATEGORY_CUSTOM = "custom"
 
         fun new(name: String = "", category: String = CATEGORY_SEER_FACTOR) =
             SeerScript(name = name, category = category)

@@ -37,6 +37,18 @@ data class Macro(
         /** 正規化畫面大小，座標與框選位置都以此為準。 */
         val SCREEN = Size(1280, 720)
 
+        private val IMAGE_ID = Regex("[A-Za-z0-9_-]{1,40}")
+
+        /** 圖片 id 會當檔名用，只允許英數、底線、減號，擋掉匯入資料裡的 `../` 之類路徑。 */
+        fun isValidImageId(id: String): Boolean = IMAGE_ID.matches(id)
+
+        /** 截圖等比縮到高 [SCREEN] 的高度（720），跟懸浮窗「存畫面」的正規化一致。 */
+        fun normalizedSize(width: Int, height: Int): Size {
+            require(width > 0 && height > 0) { "圖片大小不對：${width}×$height" }
+            val h = SCREEN.height
+            return Size(Math.round(width.toDouble() * h / height).toInt().coerceAtLeast(1), h)
+        }
+
         private fun seconds(ms: Long): String =
             if (ms % 1000 == 0L) "${ms / 1000}" else "${ms / 1000.0}"
     }

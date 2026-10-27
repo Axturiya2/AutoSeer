@@ -80,6 +80,7 @@
     <string name="missions_desc">選擇要自動執行的關卡類型。</string>
     <string name="mission_seer_factor">精靈因子</string>
     <string name="mission_daily">每日任務</string>
+    <string name="mission_custom">自製腳本</string>
     <string name="daily_title">每日任務</string>
     <string name="daily_placeholder">每日任務自動化尚未開放，敬請期待。</string>
 
@@ -146,4 +147,18 @@
     <string name="delay_result">結算點擊後（勝利／失敗）</string>
     <string name="delay_retreat">撤退各步之間</string>
     <string name="delay_reset">還原預設(500)</string>
+
+    <!-- 自製腳本（FR-12） -->
+    <string name="macro_shots_title">截圖庫</string>
+    <string name="macro_shots_desc">在遊戲中按懸浮窗「截圖製作」，或從相簿匯入截圖（會等比縮到高 720）。之後做腳本時從這裡挑截圖來框按鈕。長按可刪除。</string>
+    <string name="macro_shots_import">從相簿匯入</string>
+    <string name="macro_shots_empty">還沒有截圖</string>
+    <string name="macro_shot_label">%1$s\n%2$d×%3$d</string>
+    <string name="macro_shot_label_new">%1$s（新）\n%2$d×%3$d</string>
+    <string name="macro_shot_imported">已匯入截圖</string>
+    <string name="macro_shot_import_fail">匯入失敗：%1$s</string>
+    <string name="macro_shot_delete_title">刪除截圖？</string>
+    <string name="macro_shot_delete_msg">刪除 %1$s 的截圖。用這張框好的按鈕已存在腳本裡，不受影響。</string>
+    <string name="macro_editor_pending">自製腳本編輯器還在開發（FR-12 第 3 階段）</string>
+    <string name="export_too_large">腳本含圖片太大，剪貼簿放不下，請少選幾個再匯出</string>
 </resources>

@@ -63,6 +63,11 @@
             android:name=".ui.FactorListActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.MacroShotsActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
+
         <service
             android:name=".service.AutoSeerService"
             android:exported="false"

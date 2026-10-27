@@ -22,6 +22,7 @@ import com.autoseer.core.RunPrefs
 import com.autoseer.core.DeviceTemplates
 import com.autoseer.core.OpenCvMatcher
 import com.autoseer.core.SeerStorage
+import com.autoseer.core.MacroStorage
 import com.autoseer.input.GestureAccessibilityService
 import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
@@ -45,6 +46,7 @@ import com.autoseer.scripts.FactorSweepProgress
 import com.autoseer.scripts.ProbeScript
 import com.autoseer.scripts.SeerFactorScript
 import com.autoseer.ui.CardCaptureActivity
+import com.autoseer.ui.MacroShotsActivity
 import java.io.File
 import java.io.FileOutputStream
 
@@ -129,6 +131,7 @@ class AutoSeerService : Service() {
             onProbe = { probeDetection() },
             onCaptureCards = { captureCardsForReview() },
             onNavTest = { navTest() },
+            onMacroShot = { captureMacroShot() },
         )
         this.overlay = overlay
         val logger = AndroidLogger(onLine = { line -> overlay.setStatus(line) })
@@ -311,6 +314,30 @@ class AutoSeerService : Service() {
                 overlay?.setChromeVisible(true)
                 Log.e(TAG, "擷取卡失敗", e)
                 overlay?.setStatus("擷取卡失敗：${e.message}")
+            }
+        }.start()
+    }
+
+    /**
+     * 自製腳本（FR-12）截圖製作：先隱藏懸浮窗，截一張正規化彩圖存進截圖庫，再開
+     * [MacroShotsActivity]（標出剛截的這張）。流程同 [captureCardsForReview]。
+     */
+    private fun captureMacroShot() {
+        val cap = capture ?: run { overlay?.setStatus("尚未就緒，無法擷取"); return }
+        overlay?.setChromeVisible(false)
+        Thread {
+            try {
+                Thread.sleep(CHROME_HIDE_MS)   // 等合成器把面板移出畫面
+                val bmp = cap.captureColorBitmap()
+                overlay?.setChromeVisible(true)
+                val file = try { MacroStorage.saveShot(this, bmp) } finally { bmp.recycle() }
+                startActivity(MacroShotsActivity.intent(this, file.name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                Log.i(TAG, "截圖製作：${file.absolutePath}")
+                overlay?.setStatus("已截圖，開啟截圖庫")
+            } catch (e: Throwable) {
+                overlay?.setChromeVisible(true)
+                Log.e(TAG, "截圖製作失敗", e)
+                overlay?.setStatus("截圖失敗：${e.message}")
             }
         }.start()
     }

@@ -8,8 +8,8 @@ import com.autoseer.core.SeerScript
 import com.autoseer.databinding.ActivityMissionListBinding
 
 /**
- * 周回腳本: the two mission blocks. 精靈因子 opens its script list; 每日任務 is a
- * placeholder page for now.
+ * 周回腳本: the mission blocks. 精靈因子 and 自製腳本（FR-12）open their script
+ * lists; 每日任務 is a placeholder page for now.
  */
 class MissionListActivity : AppCompatActivity() {
 
@@ -32,6 +32,15 @@ class MissionListActivity : AppCompatActivity() {
         }
         binding.btnDaily.setOnClickListener {
             startActivity(Intent(this, DailyTasksActivity::class.java))
+        }
+        binding.btnCustom.setOnClickListener {
+            startActivity(
+                ScriptListActivity.intent(
+                    this,
+                    SeerScript.CATEGORY_CUSTOM,
+                    getString(R.string.mission_custom),
+                )
+            )
         }
     }
 }

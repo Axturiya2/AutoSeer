@@ -37,6 +37,8 @@ class ControlOverlay(
     private val onProbe: () -> Unit = {},
     private val onCaptureCards: () -> Unit = {},
     private val onNavTest: () -> Unit = {},
+    /** 自製腳本（FR-12）：截圖存進截圖庫並開啟。 */
+    private val onMacroShot: () -> Unit = {},
 ) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -226,6 +228,10 @@ class ControlOverlay(
         tools.addView(probe, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
         tools.addView(cards, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3) })
 
+        val macroShotBtn = makeBtn("截圖製作（自製腳本）", cField).apply {
+            textSize = 12f; setOnClickListener { onMacroShot() }
+        }
+
         // 純導航測試（不打戰鬥）：測「進入→退出→下一個因子＋捲動尋找」的銜接流程。
         navTestBtn = makeBtn("測因子導航（不打戰鬥）", cField).apply {
             textSize = 12f; setOnClickListener { onNavTest() }
@@ -240,7 +246,7 @@ class ControlOverlay(
         // 起始關卡 stepper 已休眠（v9+：改以動態辨識「關卡 N」為準，不再由使用者預設）。
         // stageRow 及 bumpStage() 程式碼保留但不加進面板。
         add(delayBtn)
-        add(runButton); add(tools); add(navTestBtn, dp(6))
+        add(runButton); add(tools); add(macroShotBtn, dp(6)); add(navTestBtn, dp(6))
         return p
     }
 
